@@ -1,0 +1,5 @@
+[IntelMQ]
+# Required locations of the intelMQ installation
+# Note: MUST be absolute values
+intelMQLocation=/lib/python3.6/site-packages/intelmq/bots
+entryPointsLocation=/lib/python3.6/site-packages/intelmq-2.1.1-py3.6.egg-info/entry_points.txt
