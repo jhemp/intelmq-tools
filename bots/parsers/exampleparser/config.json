@@ -1,0 +1,9 @@
+{
+  "ExampleBOT": {
+    "description": "ExampleBOT a simple example of a bot.",
+    "module": "intelmq.bots.parsers.examplebot.parser",
+    "parameters": {
+      
+    }
+  }
+}
