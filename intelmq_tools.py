@@ -74,7 +74,7 @@ def check_config(config: ConfigParser, dev: bool) -> None:
                 config_ok = True
             elif len(config['IntelMQ']) > 3:
                 location = check_get_key(config, 'IntelMQ', 'intelMQLocation', dev)
-                bot_code_location = os.path.join(location, 'bots', dev)
+                bot_code_location = os.path.join(location, 'bots')
                 check_bot_folders(bot_code_location, dev)
                 check_get_key(config, 'IntelMQ', 'entryPointsLocation', dev)
                 check_get_key(config, 'IntelMQ', 'binFolder', dev)
