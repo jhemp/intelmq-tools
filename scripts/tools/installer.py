@@ -157,8 +157,8 @@ class Installer(AbstractBaseTool):
                     item = pipeline_map.get(instance.name)
                     if item:
                         can_be_removed = False
-            if can_be_removed:
-                del runtime[instance.name]
+                    if can_be_removed:
+                        del runtime[instance.name]
         with open(intelmq_details.runtime_file, 'w') as f:
             f.write(pretty_json(runtime))
 
