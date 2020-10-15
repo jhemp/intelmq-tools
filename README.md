@@ -24,7 +24,7 @@ There are only two elements which needs configuration the table below will expla
 |TAG|Description|
 |---|---|
 | intelMQLocation  | The location of intelmq. Example /lib/python3.6/site-packages/intelmq/bots  |
-|  entryPointsLocation | Location of the entry_point file. Example /lib/python3.6/site-packages/intelmq-2.1.1-py3.6.egg-info/entry_points.txt  |
+| entryPointsLocation | Location of the entry_point file. Example /lib/python3.6/site-packages/intelmq-2.1.1-py3.6.egg-info/entry_points.txt  |
 
 # Custom Bots
 The custom bots, need to be stored in the "bots" folder in the same directory as the tool and the setup of the internal folders should follow the same structure as of the original one from intelmq.

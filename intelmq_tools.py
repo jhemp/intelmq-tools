@@ -17,6 +17,7 @@ import sys
 from intelmqtools.exceptions import IntelMQToolException
 from intelmqtools.intelmqtool import IntelMQTool
 from intelmqtools.tools.checker import Checker
+from intelmqtools.tools.installer import Installer
 from intelmqtools.tools.lister import Lister
 from intelmqtools.tools.updater import Updater
 
@@ -29,7 +30,7 @@ def main() -> None:
         tools.register_tool(Lister)
         tools.register_tool(Checker)
         tools.register_tool(Updater)
-        # tool_factory.register_component(Installer)
+        tools.register_tool(Installer)
 
         sys.exit(tools.run())
     except IntelMQToolException as error:

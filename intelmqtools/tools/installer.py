@@ -4,18 +4,16 @@
 Created on 15.01.20
 """
 import os
-import stat
 import shutil
 from argparse import ArgumentParser, Namespace
 from typing import List, Dict
 
-from scripts.classes import CaseSensitiveConfigParser
-from scripts.classes.intelmqbot import IntelMQBot
-from scripts.classes.intelmqdetails import IntelMQDetails
-from scripts.classes.pipelinedetail import PipelineDetail
-from scripts.libs.abstractbase import AbstractBaseTool
-from scripts.libs.exceptions import IncorrectArgumentException, ToolException
-from scripts.libs.utils import pretty_json
+from intelmqtools.classes import CaseSensitiveConfigParser
+from intelmqtools.classes.intelmqbot import IntelMQBot
+from intelmqtools.classes.pipelinedetail import PipelineDetail
+from intelmqtools.tools.abstractbasetool import AbstractBaseTool
+from intelmqtools.exceptions import IncorrectArgumentException, ToolException
+from intelmqtools.utils import pretty_json
 
 __author__ = 'Weber Jean-Paul'
 __email__ = 'jean-paul.weber@restena.lu'
@@ -35,7 +33,7 @@ class Installer(AbstractBaseTool):
         self.set_default_arguments(arg_parse)
         return arg_parse
 
-    def start(self, args: Namespace) -> None:
+    def start(self, args: Namespace) -> int:
 
         if args.install or args.uninstall:
             if args.install:
@@ -45,7 +43,7 @@ class Installer(AbstractBaseTool):
                 bot_path = args.uninstall
                 removal = True
 
-            intelmq_details, custom_bots = self.get_custom_bots(args.dev)
+            custom_bots = self.get_custom_bots()
             not_found = True
             for custom_bot in custom_bots:
                 if bot_path in custom_bot.code_file:
@@ -58,65 +56,46 @@ class Installer(AbstractBaseTool):
                 mode_ = 'insert'
                 if removal:
                     mode_ = 'remove'
-                    pipeline_map = self.check_pipeline(intelmq_details, [custom_bot])
-                    self.remove_runtime(intelmq_details, pipeline_map, [custom_bot])
+                    pipeline_map = self.check_pipeline([custom_bot])
+                    self.remove_runtime(pipeline_map, [custom_bot])
 
-                self.update_bots_file([custom_bot], mode_, args.dev)
-                self.update_entry_points(intelmq_details, [custom_bot], mode_)
-                self.update_executable(intelmq_details, [custom_bot], mode_)
-                self.update_files(intelmq_details, [custom_bot], mode_)
+                self.update_bots_file([custom_bot], mode_)
+
+                self.update_executable([custom_bot], mode_)
+                self.update_files([custom_bot], mode_)
                 print('BOT Class {} was successfully {}ed'.format(custom_bot.class_name, mode_))
+            return 0
         else:
             raise IncorrectArgumentException()
 
     def get_version(self) -> str:
         return '0.1'
 
-    @staticmethod
-    def update_entry_points(intelmq_details: IntelMQDetails, bots: List[IntelMQBot], mode_: str) -> None:
-        config = CaseSensitiveConfigParser()
-        with open(intelmq_details.entry_point_location, 'r') as f:
-            configuration = f.read()
+    def update_executable(self, bots: List[IntelMQBot], mode_: str) -> None:
         for bot in bots:
-            botline = '{} = {}\n'.format(bot.code_module, bot.entry_point)
-            if botline in configuration and mode_ == 'remove':
-                print('Removed {} from entry_points.txt'.format(botline))
-                configuration = configuration.replace(botline, '')
-            else:
-                if mode_ == 'install':
-                    print('Added {} to entry_points.txt'.format(botline))
-                    configuration = '{}{}'.format(configuration, botline)
-        with open(intelmq_details.entry_point_location, 'w') as f:
-            f.write(configuration)
+            file_path = os.path.join(self.config.bin_folder, bot.code_module)
+            if mode_ == 'remove':
+                if os.path.exists(file_path):
+                    print('Removed file {}'.format(file_path))
+                    os.remove(file_path)
+            elif mode_ == 'insert':
+                text = "#!/bin/python3.6\n" \
+                       "import {0}\n" \
+                       "import sys\n" \
+                       "{0}.run()" \
+                       "import re\n" \
+                       "import sys\n" \
+                       "sys.exit(\n" \
+                       "    {0}.run()\n" \
+                       ")".format(bot.code_module)
+                with open(file_path, 'w+') as f:
+                    f.write(text)
+                # Note: must be in octal (771_8 = 457_10)
+                os.chmod(file_path, 493)
+                print('File {} created'.format(file_path))
 
-    def update_executable(self, intelmq_details: IntelMQDetails, bots: List[IntelMQBot], mode_: str) -> None:
-        if os.path.exists(intelmq_details.bin_folder):
-            for bot in bots:
-                file_path = os.path.join(intelmq_details.bin_folder, bot.code_module)
-                if mode_ == 'remove':
-                    if os.path.exists(file_path):
-                        print('Removed file {}'.format(file_path))
-                        os.remove(file_path)
-                elif mode_ == 'insert':
-                    text = "#!/bin/python3.6\n" \
-                           "# EASY-INSTALL-ENTRY-SCRIPT: 'intelmq==2.1.1','console_scripts','{0}'" \
-                           "__requires__ = 'intelmq==2.1.1'\n" \
-                           "import re\n" \
-                           "import sys\n" \
-                           "from pkg_resources import load_entry_point\n\nif __name__ == '__main__':\n" \
-                           "    sys.argv[0] = re.sub(r'(-script\.pyw?|\.exe)?$', '', sys.argv[0])\n" \
-                           "    sys.exit(\n" \
-                           "load_entry_point('intelmq==2.1.1', 'console_scripts', '{0}')()\n" \
-                           ")".format(bot.code_module)
-                    with open(file_path, 'w+') as f:
-                        f.write(text)
-                    #Note: must be in octal (771_8 = 457_10)
-                    os.chmod(file_path, 493)
-                    print('File {} created'.format(file_path))
-        else:
-            raise ToolException('Path {} for executables does not exist'.format(intelmq_details.bin_folder))
-
-    def build_pipeline_map(self, pipeline: dict) -> Dict[str, PipelineDetail]:
+    @staticmethod
+    def build_pipeline_map(pipeline: dict) -> Dict[str, PipelineDetail]:
         seen_details = dict()
         for instance_name, details in pipeline.items():
             if instance_name not in seen_details.keys():
@@ -135,8 +114,8 @@ class Installer(AbstractBaseTool):
                     seen_details[instance_name].destinations.append(seen_details[queue_instance_name])
         return seen_details
 
-    def check_pipeline(self, intelmq_details: IntelMQDetails, bots: List[IntelMQBot]) -> Dict[str, PipelineDetail]:
-        pipeline = self.get_config(intelmq_details.pipeline_file)
+    def check_pipeline(self, bots: List[IntelMQBot]) -> Dict[str, PipelineDetail]:
+        pipeline = self.get_config(self.config.pipeline_file)
         pipeline_map = self.build_pipeline_map(pipeline)
         for bot in bots:
             for instance in bot.instances:
@@ -147,9 +126,9 @@ class Installer(AbstractBaseTool):
                         raise ToolException('The Bot {} is still used in the pipes. Remove pipes first.'.format(bot.code_file))
         return pipeline_map
 
-    def remove_runtime(self, intelmq_details: IntelMQDetails, pipeline_map: Dict[str, PipelineDetail],
+    def remove_runtime(self, pipeline_map: Dict[str, PipelineDetail],
                        bots: List[IntelMQBot]) -> None:
-        runtime = self.get_config(intelmq_details.runtime_file)
+        runtime = self.get_config(self.config.runtime_file)
         for bot in bots:
             can_be_removed = True
             if bot.instances:
@@ -159,14 +138,14 @@ class Installer(AbstractBaseTool):
                         can_be_removed = False
                     if can_be_removed:
                         del runtime[instance.name]
-        with open(intelmq_details.runtime_file, 'w') as f:
+        with open(self.config.runtime_file, 'w') as f:
             f.write(pretty_json(runtime))
 
-    def update_files(self, intelmq_details: IntelMQDetails, bots: List[IntelMQBot], mode_: str) -> None:
+    def update_files(self, bots: List[IntelMQBot], mode_: str) -> None:
         for bot in bots:
             directory_to_from = os.path.dirname(bot.code_file)
             bot_directory = directory_to_from.replace(self.bot_location, '')
-            directory_to_to = '{}{}'.format(intelmq_details.bot_folder, bot_directory)
+            directory_to_to = '{}{}'.format(self.config.bot_folder, bot_directory)
             if os.path.exists(directory_to_from):
                 if mode_ == 'remove':
                     if os.path.exists(directory_to_to):
