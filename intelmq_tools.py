@@ -11,7 +11,6 @@ __email__ = 'jean-paul.weber@restena.lu'
 __copyright__ = 'Copyright 2019-present, Restena CSIRT'
 __license__ = 'GPL v3+'
 
-import argparse
 import sys
 
 from intelmqtools.exceptions import IntelMQToolException
