@@ -121,7 +121,7 @@ class Updater(AbstractBaseTool):
     def __fix_decider(self,
                       bot: Union[IntelMQBot, IntelMQBotInstance],
                       parameter_name, issue: Union[ParameterIssue, ParameterIssueDetail, GeneralIssueDetail],
-                      auto: bool):
+                      auto: bool) -> None:
         if isinstance(issue, GeneralIssueDetail) or isinstance(issue, ParameterIssueDetail):
 
             if issue.additional_keys:
@@ -189,7 +189,7 @@ class Updater(AbstractBaseTool):
             bot: [IntelMQBot, IntelMQBotInstance],
             parameter_name: str,
             issue: ParameterIssue,
-            auto: bool):
+            auto: bool) -> None:
         text = 'Parameter {} with Value: {} was {}.'.format(
             colorize_text(parameter_name, 'Red'),
             colorize_text(issue.should_be, 'Magenta'),

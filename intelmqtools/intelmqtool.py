@@ -27,7 +27,6 @@ class IntelMQTool:
     VERSION = '0.3'
 
     def __init__(self):
-
         self.__tools: Dict[str, AbstractBaseTool] = dict()
         self.config = None
 

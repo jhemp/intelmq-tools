@@ -33,12 +33,12 @@ class AbstractBaseTool(ABC):
 
     def __init__(self, config: IntelMQToolConfig = None):
         self.logger = logging.getLogger(self.get_class_name())
-        self.config = config
-        if self.config:
+        self.config: IntelMQToolConfig = None
+        if config:
             # No need to sel log lvl if there is no configuration
-            self.__set_logger(self.config.log_lvl)
+            self.set_config(config)
 
-    def __set_logger(self, log_level: int):
+    def __set_logger(self, log_level: int) -> None:
         if log_level and log_level > -1:
             log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
             self.logger.setLevel(logging.DEBUG)
@@ -160,7 +160,7 @@ class AbstractBaseTool(ABC):
                         bot_object.custom_default_parameters = values
                         bot_object.class_name = key
                 else:
-                    # either this is a custom bot or it the config is missing
+                    # this is a custom bot's config is missing
 
                     if self.config.custom_bot_folder in bot_location:
                         raise MissingConfigurationException(

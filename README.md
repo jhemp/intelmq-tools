@@ -1,7 +1,8 @@
 # intelmq-tools
 Tools for intelmq. 
 This tool will help you to check up on your running configurations and 
-helps you to update them.
+helps you to update them. The tools also makes the necessary configurations in IntelMQ 
+to be able to add custom Bots in a simple manner.
 
 # Features
 * Integrates custom bots into intelmq
@@ -101,11 +102,23 @@ Running Instances        0
 $ ./intelmq_tools.py install -i bots/experts/dummy/expert.py 
 
 File /usr/bin/intelmq.bots.experts.dummy.expert created
-Directory /opt/intelmq/intelmq/bots/experts/dummy created
-BOT Class Restena NetworK was successfully inserted
+BOT Class ExampleBOT was successfully inserted
 ```
 
-**Note:** This command will create all required files for the bot like executable and also update the BOTS file with the configuration given in the bot's config.json
+**Note 1:** This command will create all required files for the bot 
+like executable and also update the BOTS file with the configuration 
+given in the bot's config.json.
+
+**Note 2:** The bot to be installed needs to be accessible by python.
+ 
+## Removing a bot
+
+```bash
+$ ./intelmq_tools.py remove -i bots/experts/dummy/expert.py 
+
+File /usr/bin/intelmq.bots.experts.dummy.expert created
+BOT Class ExampleBOT was successfully inserted
+```
 
 ## Checking for differences in the configurations
 

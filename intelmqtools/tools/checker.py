@@ -45,7 +45,7 @@ class Checker(AbstractBaseTool):
     def __print_issue(self, issues: GeneralIssueDetail,
                       full: bool, count: int = 0,
                       print_lines: bool = True,
-                      include_params: bool = True):
+                      include_params: bool = True) -> None:
         bots = 'BOTS '
         if count > 0:
             bots = 'Running Configuration'
