@@ -23,7 +23,8 @@ class Lister(AbstractBaseTool):
         arg_parse.add_argument('-o', '--original', default=False, help='List all original BOTS', action='store_true')
         arg_parse.add_argument('-i', '--installed', default=False, help='List all installed BOTS', action='store_true')
         arg_parse.add_argument('-c', '--customs', default=False, help='List all custom BOTS', action='store_true')
-        arg_parse.add_argument('-u', '--uninstalled', default=False, help='List all not installed BOTS', action='store_true')
+        arg_parse.add_argument('-u', '--uninstalled',
+                               default=False, help='List all not installed BOTS', action='store_true')
         arg_parse.add_argument('-l', '--list', default=False, help='List all BOTS', action='store_true')
         return arg_parse
 

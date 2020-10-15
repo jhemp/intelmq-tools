@@ -2,14 +2,17 @@
 Tools for intelmq. This tool will help you to check up on your running configurations and hels you to update them.
 
 # Features
-* Installing and un installing of custom bots bots
-* Checking the configurations for missconfigurations
-* Fixing missconfigurations
+* Integrates custom bots bots
+* Checking the configurations for miss configurations
+* Checking if the bots gotten new parameters
+* Fixing miss configurations
+* Fixes missing new parameters of bots
 * Listing all the bots and their configurations
 
 # Requirements
 - Installation of IntelMQ (see https://github.com/certtools/intelmq)
 - Python3
+- The custom bots need to be referenced in the python path
 
 # Installation
 Clone this repo somewhere on the system where intel mq is installed.

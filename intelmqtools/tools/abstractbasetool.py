@@ -142,18 +142,19 @@ class AbstractBaseTool(ABC):
             bot_module = bot_subpart.replace(os.path.sep, '.')
             if self.config.intelmq_folder in bot_folder:
                 bot_module = 'intelmq.bots{}'.format(bot_module)
+                bot_object.custom = False
             else:
                 # this is a custom bot
                 last_dir = os.path.basename(bot_location)
                 bot_module = '{}{}'.format(last_dir, bot_module)
                 config_path = os.path.join(bot_folder, 'config.json')
+                bot_object.custom = True
                 if os.path.exists(config_path):
                     with open(config_path) as f:
                         default_custom_config = json.load(f)
                     for key, values in default_custom_config.items():
                         bot_object.custom_default_parameters = values
                         bot_object.class_name = key
-                        bot_object.custom = True
                 else:
                     # either this is a custom bot or it the config is missing
 
@@ -186,13 +187,10 @@ class AbstractBaseTool(ABC):
                     if bot_detail.code_module == module_name:
                         if running_bots:
                             bot_detail.default_parameters = bot_config
+                            # if a bot is registered in the BOTS file then it is installed
+                            bot_detail.installed = True
                         else:
                             bot_detail.custom_default_parameters = bot_config
-                        bot_detail.installed = running_bots
-                        if not bot_detail.class_name:
-                            bot_detail.class_name = bot_name
-                        bot_detail.custom = False
-
                         break
 
     def set_default_runtime_config(self, bot_details: List[IntelMQBot]) -> None:
@@ -263,6 +261,7 @@ class AbstractBaseTool(ABC):
         print('Description:             {}'.format(colorize_text(bot_detail.description, 'LightGray')))
         print('Module:                  {}'.format(bot_detail.code_module))
         print('Entry Point:             {}'.format(bot_detail.entry_point))
+        print('Installed:               {}'.format(bot_detail.installed))
         if full and bot_detail.installed:
             print('{}:          {}'.format(colorize_text('Default Running Config', 'Cyan'),
                                            pretty_json(bot_detail.default_parameters)))
@@ -286,3 +285,17 @@ class AbstractBaseTool(ABC):
     def print_bot_details(self, bot_details: List[IntelMQBot], full: bool = False) -> None:
         for bot_detail in bot_details:
             self.print_bot_detail(bot_detail, full)
+
+    def __get_bots_by_install(self, installed: bool) -> List[IntelMQBot]:
+        bot_details = self.get_all_bots()
+        result = list()
+        for bot_detail in bot_details:
+            if bot_detail.installed is installed:
+                result.append(bot_detail)
+        return result
+
+    def get_uninstalled_bots(self) -> List[IntelMQBot]:
+        return self.__get_bots_by_install(False)
+
+    def get_installed_bots(self) -> List[IntelMQBot]:
+        return self.__get_bots_by_install(True)
