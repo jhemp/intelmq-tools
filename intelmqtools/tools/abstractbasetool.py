@@ -18,13 +18,14 @@ __license__ = 'GPL v3+'
 
 class AbstractBaseTool(ABC):
 
-    def __init__(self, config: IntelMQToolConfig, log_level: int = None, is_dev: bool = None):
+    def __init__(self, config: IntelMQToolConfig = None):
         self.logger = logging.getLogger(self.get_class_name())
-        self.is_dev = is_dev
         self.config = config
-        self.set_params(log_level, is_dev)
+        if self.config:
+            # No need to sel log lvl if there is no configuration
+            self.__set_logger(self.config.log_lvl)
 
-    def set_params(self, log_level: int, is_dev: bool):
+    def __set_logger(self, log_level: int):
         if log_level and log_level > -1:
             log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
             self.logger.setLevel(logging.DEBUG)
@@ -34,10 +35,6 @@ class AbstractBaseTool(ABC):
             self.logger.addHandler(console_handler)
 
             self.logger.debug('Created instance of {}'.format(self.get_class_name()))
-        if is_dev is None:
-            self.is_dev = False
-        else:
-            self.is_dev = is_dev
 
     @staticmethod
     def __get_log_level(log_level: int) -> int:
@@ -72,3 +69,4 @@ class AbstractBaseTool(ABC):
 
     def set_config(self, config: IntelMQToolConfig) -> None:
         self.config = config
+        self.__set_logger(self.config.log_lvl)

@@ -29,12 +29,10 @@ class IntelMQTool:
     def __init__(self):
 
         self.__tools: Dict[str, AbstractBaseTool] = dict()
-        self.__setup_argument_parser()
-
-        self.config = IntelMQToolConfig()
+        self.config = None
 
     def register_tool(self, clazz: Type[AbstractBaseTool]) -> None:
-        instance = clazz(self.config)
+        instance = clazz()
         if not isinstance(instance, AbstractBaseTool):
             raise IntelMQToolException(
                 'Tool {} does not not implement the AbstractBaseTool class'.format(clazz.__name__)
@@ -43,7 +41,6 @@ class IntelMQTool:
 
     def __setup_argument_parser(self) -> None:
         common = argparse.ArgumentParser(add_help=False)
-        common.add_argument('--verbose', '-v', action='count', default=0)
         common.add_argument('-f', '--full', action='store_true', help='display full', default=False)
 
         self.parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
@@ -74,6 +71,7 @@ class IntelMQTool:
                                  help='Configuration file\n'
                                       'Note: The default location is ./config/config.ini',
                                  default=None)
+        self.parser.add_argument('--verbose', '-v', action='count', default=0)
 
         sub_parsers = self.parser.add_subparsers(help='Available tools', dest='command')
 
@@ -96,7 +94,6 @@ class IntelMQTool:
         if instance is None:
             raise IntelMQToolException('Program {} cannot be found'.format(key))
         else:
-            instance.set_params(args.verbose, False)
             instance.set_config(self.config)
             return instance.start(args)
 
@@ -117,6 +114,7 @@ class IntelMQTool:
         fake_root = args.fake
         config = IntelMQToolConfig()
         config.fake_root = fake_root
+        config.log_lvl = args.verbose
 
         try:
             intelmq_module = __import__('intelmq')
@@ -181,7 +179,7 @@ class IntelMQTool:
             raise SetupException(message)
 
     def run(self) -> int:
-
+        self.__setup_argument_parser()
         args, argv = self.parser.parse_known_args()
 
         self.__set_config(args)

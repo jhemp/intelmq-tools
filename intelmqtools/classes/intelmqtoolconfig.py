@@ -25,6 +25,7 @@ class IntelMQToolConfig:
         self.intelmq_folder = None
         self.version = None
         self.config_dir = '/etc/intelmq'
+        self.log_lvl = 0
 
     def __get_folder(self, path: str) -> str:
         if self.is_dev:
