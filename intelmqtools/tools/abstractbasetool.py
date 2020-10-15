@@ -10,7 +10,7 @@ import re
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, Namespace
 
-from typing import List
+from typing import List, Optional
 
 from intelmqtools.classes.intelmqbot import IntelMQBot
 from intelmqtools.classes.intelmqbotinstance import IntelMQBotInstance
@@ -110,7 +110,7 @@ class AbstractBaseTool(ABC):
         return bot_details
 
     @staticmethod
-    def __extract_data_from_text(file_data: str) -> str:
+    def __extract_data_from_text(file_data: str) -> Optional[str]:
         bot_reference = None
 
         if file_data:
@@ -134,33 +134,40 @@ class AbstractBaseTool(ABC):
                          bot_folder: str,
                          bot_location: str,
                          bot_file: str
-                         ) -> IntelMQBot:
+                         ) -> Optional[IntelMQBot]:
         if bot_reference:
             bot_object = IntelMQBot()
-            bot_module = 'intelmq.bots{}'.format(bot_folder.replace(bot_location, ''))
-            bot_module = bot_module.replace(os.path.sep, '.')
+            # Check if this is part of the installation
+            bot_subpart = bot_folder.replace(bot_location, '')
+            bot_module = bot_subpart.replace(os.path.sep, '.')
+            if self.config.intelmq_folder in bot_folder:
+                bot_module = 'intelmq.bots{}'.format(bot_module)
+            else:
+                # this is a custom bot
+                last_dir = os.path.basename(bot_location)
+                bot_module = '{}{}'.format(last_dir, bot_module)
+                config_path = os.path.join(bot_folder, 'config.json')
+                if os.path.exists(config_path):
+                    with open(config_path) as f:
+                        default_custom_config = json.load(f)
+                    for key, values in default_custom_config.items():
+                        bot_object.custom_default_parameters = values
+                        bot_object.class_name = key
+                        bot_object.custom = True
+                else:
+                    # either this is a custom bot or it the config is missing
+
+                    if self.config.custom_bot_folder in bot_location:
+                        raise MissingConfigurationException(
+                            'Configuration for bot {} is missing. Create in in file {}'.format(bot_module, config_path)
+                        )
+
             bot_module = '{}.{}'.format(bot_module, bot_file.replace('.py', ''))
             bot_object.code_module = bot_module
             bot_object.bot_alias = bot_reference
-
-            # check if it is a custom bot
-            config_path = os.path.join(bot_folder, 'config.json')
-            if os.path.exists(config_path):
-                with open(config_path) as f:
-                    default_custom_config = json.load(f)
-                for key, values in default_custom_config.items():
-                    bot_object.custom_default_parameters = values
-                    bot_object.class_name = key
-                    bot_object.custom = True
-                return bot_object
-            else:
-                # either this is a custom bot or it the config is missing
-
-                if self.config.custom_bot_folder in bot_location:
-                    raise MissingConfigurationException(
-                        'Configuration for bot {} is missing. Create in in file {}'.format(bot_module, config_path)
-                    )
+            bot_object.code_file = os.path.join(bot_folder, bot_file)
             return bot_object
+        return None
 
     @staticmethod
     def get_config(file_path: str) -> dict:
@@ -177,10 +184,6 @@ class AbstractBaseTool(ABC):
                 module_name = bot_config['module']
                 for bot_detail in bot_details:
                     if bot_detail.code_module == module_name:
-                        if bot_detail.code_file is None:
-                            code_file = os.path.join(self.config.intelmq_folder,
-                                                     bot_detail.code_module.replace('.', os.path.sep))
-                            bot_detail.code_file = '{}.py'.format(code_file)
                         if running_bots:
                             bot_detail.default_parameters = bot_config
                         else:
@@ -234,15 +237,6 @@ class AbstractBaseTool(ABC):
     def get_custom_bots(self) -> List[IntelMQBot]:
         # get directory structure
         bot_details = self.__get_bots(self.config.custom_bot_folder)
-        for bot_detail in bot_details:
-            # set path right
-            code_file = os.path.join(self.config.custom_bot_folder, bot_detail.code_module.replace('.', os.path.sep))
-            file_path = '{}.py'.format(code_file)
-            # TODO: find out why? but it works
-            bot_detail.code_file = file_path.replace('/bots/', '/')
-            # set module right
-            bot_detail.code_module = 'intelmq.{}'.format(bot_detail.code_module)
-            # determine type
         self.set_default_runtime_config(bot_details)
         self.set_default_options(bot_details)
         return bot_details

@@ -4,7 +4,7 @@
 Created on 17.01.20
 """
 import os
-from typing import List
+from typing import List, Optional
 
 from intelmqtools.classes.intelmqbotinstance import IntelMQBotInstance
 
@@ -56,11 +56,16 @@ class IntelMQBot:
         return len(self.instances) > 0
 
     @property
-    def configuration(self) -> dict:
+    def configuration(self) -> Optional[dict]:
         result = dict()
-        result.update(self.default_parameters)
-        result.update(self.intelmq_defaults)
-        return result
+        if self.default_parameters:
+            result.update(self.default_parameters)
+        if self.intelmq_defaults:
+            result.update(self.intelmq_defaults)
+        if len(result) > 0:
+            return result
+        else:
+            return None
 
     @property
     def module(self) -> str:
