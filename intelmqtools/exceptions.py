@@ -10,15 +10,19 @@ __copyright__ = 'Copyright 2019-present, Restena CSIRT'
 __license__ = 'GPL v3+'
 
 
-class IntelMQTool(Exception):
+class IntelMQToolException(Exception):
     pass
 
 
-class SetupException(IntelMQTool):
+class IntelMQToolConfigException(IntelMQToolException):
     pass
 
 
-class ToolException(IntelMQTool):
+class SetupException(IntelMQToolException):
+    pass
+
+
+class ToolException(IntelMQToolException):
     pass
 
 

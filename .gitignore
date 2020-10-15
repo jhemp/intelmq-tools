@@ -1,1 +1,6 @@
 *.pyc
+.idea
+config/config.ini
+fake-install
+intelmq
+venv

@@ -6,9 +6,9 @@ Created on 17.01.20
 from argparse import Namespace, ArgumentParser
 from typing import List
 
-from scripts.classes.intelmqbot import IntelMQBot
-from scripts.libs.abstractbase import AbstractBaseTool
-from scripts.libs.exceptions import IncorrectArgumentException
+from intelmqtools.classes.intelmqbot import IntelMQBot
+from intelmqtools.tools.abstractbasetool import AbstractBaseTool
+from intelmqtools.exceptions import IncorrectArgumentException
 
 __author__ = 'Weber Jean-Paul'
 __email__ = 'jean-paul.weber@restena.lu'

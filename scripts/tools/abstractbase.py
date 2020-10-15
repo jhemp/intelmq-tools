@@ -13,14 +13,14 @@ from configparser import ConfigParser
 from typing import List, Tuple
 import sys
 
-from scripts.classes.botissue import BotIssue
-from scripts.classes.generalissuedetail import GeneralIssueDetail, ParameterIssueDetail
-from scripts.classes.intelmqbot import IntelMQBot
-from scripts.classes.intelmqbotinstance import IntelMQBotInstance
-from scripts.classes.intelmqdetails import IntelMQDetails
-from scripts.classes.parameterissue import ParameterIssue
-from scripts.libs.exceptions import ToolException
-from scripts.libs.utils import colorize_text, pretty_json
+from intelmqtools.classes.botissue import BotIssue
+from intelmqtools.classes.generalissuedetail import GeneralIssueDetail, ParameterIssueDetail
+from intelmqtools.classes.intelmqbot import IntelMQBot
+from intelmqtools.classes.intelmqbotinstance import IntelMQBotInstance
+from intelmqtools.classes.intelmqdetails import IntelMQDetails
+from intelmqtools.classes.parameterissue import ParameterIssue
+from intelmqtools.exceptions import ToolException
+from intelmqtools.utils import colorize_text, pretty_json
 
 __author__ = 'Weber Jean-Paul'
 __email__ = 'jean-paul.weber@restena.lu'
@@ -55,20 +55,7 @@ class AbstractBaseTool(ABC):
         self.bot_location = os.path.dirname(os.path.abspath(__file__)).replace('/scripts/libs', '/bots')
         sys.path.insert(0, self.bot_location.replace('/bots', ''))
 
-    def set_params(self, log_level: int, is_dev: bool):
-        if log_level and log_level > -1:
-            log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            self.logger.setLevel(logging.DEBUG)
-            console_handler = logging.StreamHandler()
-            console_handler.setFormatter(logging.Formatter(log_format))
-            console_handler.setLevel(self.__get_log_level(log_level))
-            self.logger.addHandler(console_handler)
 
-            self.logger.debug('Created instance of {}'.format(self.get_class_name()))
-        if is_dev is None:
-            self.is_dev = False
-        else:
-            self.is_dev = is_dev
 
     def set_config(self, config: ConfigParser):
         self.config = config
@@ -153,7 +140,6 @@ class AbstractBaseTool(ABC):
             details.intelmq_location = os.path.join(base, details.intelmq_location[1:])
             details.entry_point_location = os.path.join(base, details.entry_point_location[1:])
             details.bin_folder = os.path.join(base, details.bin_folder[1:])
-
 
     def __get_bots(self, bot_location: str) -> List[IntelMQBot]:
         bot_details = list()

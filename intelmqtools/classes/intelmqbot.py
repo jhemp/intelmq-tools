@@ -6,13 +6,14 @@ Created on 17.01.20
 import os
 from typing import List
 
-from scripts.classes.intelmqbotinstance import IntelMQBotInstance
-from scripts.classes.intelmqdetails import IntelMQDetails
+from intelmqtools.classes.intelmqbotinstance import IntelMQBotInstance
 
 __author__ = 'Weber Jean-Paul'
 __email__ = 'jean-paul.weber@restena.lu'
 __copyright__ = 'Copyright 2019-present, Restena CSIRT'
 __license__ = 'GPL v3+'
+
+from intelmqtools.classes.intelmqtoolconfig import IntelMQToolConfig
 
 
 class IntelMQBot:
@@ -31,7 +32,7 @@ class IntelMQBot:
 
     @property
     def bot_type(self) -> str:
-        for base in IntelMQDetails.BOT_FOLDER_BASES:
+        for base in IntelMQToolConfig.BOT_FOLDER_BASES:
             path_part = '{0}{1}{0}'.format(os.path.sep, base)
             if path_part in self.code_file.lower():
                 return base.title()[:-1]
