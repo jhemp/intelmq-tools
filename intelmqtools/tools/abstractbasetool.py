@@ -165,6 +165,8 @@ class AbstractBaseTool(ABC):
 
             bot_module = '{}.{}'.format(bot_module, bot_file.replace('.py', ''))
             bot_object.code_module = bot_module
+            if bot_object.custom:
+                bot_object.custom_default_parameters['module'] = bot_module
             bot_object.bot_alias = bot_reference
             bot_object.code_file = os.path.join(bot_folder, bot_file)
             return bot_object
@@ -244,19 +246,14 @@ class AbstractBaseTool(ABC):
         org_bots = self.get_original_bots()
         bot_details = self.get_custom_bots()
         # It may be possible that custom bots cannot be distinguished
-        for org_bot in org_bots:
-            not_found = True
-            for bot in bot_details:
-                if org_bot.code_module == bot.code_module:
-                    not_found = False
-                    bots.append(bot)
-            if not_found:
-                bots.append(org_bot)
-        return bots
+        return bots + org_bots + bot_details
 
     @staticmethod
     def print_bot_detail(bot_detail: IntelMQBot, full: bool = False) -> None:
-        print('BOT Type:                {}'.format(colorize_text(bot_detail.bot_type, 'Gray')))
+        type_text = bot_detail.bot_type
+        if bot_detail.custom:
+            type_text = '{} (Custom)'.format(type_text)
+        print('BOT Type:                {}'.format(colorize_text(type_text, 'Gray')))
         print('BOT Class:               {}'.format(colorize_text(bot_detail.class_name, 'LightYellow')))
         print('Description:             {}'.format(colorize_text(bot_detail.description, 'LightGray')))
         print('Module:                  {}'.format(bot_detail.code_module))
@@ -266,7 +263,7 @@ class AbstractBaseTool(ABC):
             print('{}:          {}'.format(colorize_text('Default Running Config', 'Cyan'),
                                            pretty_json(bot_detail.default_parameters)))
         if full:
-            print('{}:   {}'.format(colorize_text('Default Config', 'Cyan'),
+            print('{}:          {}'.format(colorize_text('Default Config', 'Cyan'),
                                     pretty_json(bot_detail.custom_default_parameters)))
         print('File:                    {}'.format(bot_detail.code_file))
         len_instances = len(bot_detail.instances)
