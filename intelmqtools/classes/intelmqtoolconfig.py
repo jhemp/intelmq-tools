@@ -22,31 +22,22 @@ class IntelMQToolConfig:
         self.__bin_folder = '/usr/bin'
         self.custom_bot_folder = None
         self.fake_root = None
-        self.__intelmq_folder = None
-        self.__intelmq_bots = __import__('intelmq.bots')
+        self.intelmq_folder = None
+        self.version = None
+        self.config_dir = '/etc/intelmq'
 
-    @staticmethod
-    def __clean_path(path: str) -> str:
-        if path.startswith('/'):
-            return path[1:]
-
-    @property
-    def intelmq_folder(self) -> str:
+    def __get_folder(self, path: str) -> str:
         if self.is_dev:
-            return os.path.join(self.fake_root, self.__clean_path(self.__intelmq_folder))
+            folder = path
+            if folder.startswith('/'):
+                folder = folder[1:]
+            return os.path.join(self.fake_root, folder)
         else:
-            return self.__intelmq_folder
-
-    @intelmq_folder.setter
-    def intelmq_folder(self, value: str) -> None:
-        self.__intelmq_folder = value
+            return path
 
     @property
     def bin_folder(self) -> str:
-        if self.is_dev:
-            return '{}/{}'.format(self.fake_root, self.__clean_path(self.__bin_folder))
-        else:
-            return self.__bin_folder
+        return self.__get_folder(self.__bin_folder)
 
     @bin_folder.setter
     def bin_folder(self, value: str) -> None:
@@ -59,14 +50,17 @@ class IntelMQToolConfig:
         else:
             raise IntelMQToolConfigException('The folder "{}" does not exist'.format(folder_path))
 
-    def validlidate(self) -> None:
-        if self.fake_root:
-            self.__check_folder(self.fake_root)
-        self.__check_folder(self.bin_folder)
-        self.__check_folder(self.custom_bot_folder)
-        self.__check_folder(self.intelmq_folder)
+    def validate(self) -> None:
+        if self.__bin_folder and self.custom_bot_folder:
 
-        return self.__bin_folder and self.custom_bot_folder
+            if self.fake_root:
+                self.__check_folder(self.fake_root)
+            self.__check_folder(self.bin_folder)
+            self.__check_folder(self.custom_bot_folder)
+            self.__check_folder(self.intelmq_folder)
+
+        else:
+            raise IntelMQToolConfigException('One of the following parameters is not set: bin, bot')
 
     @property
     def is_dev(self) -> bool:
@@ -96,11 +90,3 @@ class IntelMQToolConfig:
     def pipeline_file(self) -> str:
         return os.path.join(self.config_dir, 'pipeline.conf')
 
-    @property
-    def version(self) -> str:
-        version = getattr(getattr(self.__intelmq_bots, 'version'), '__version_info__')
-        return '{}.{}.{}'.format(version[0], version[1], version[len(version) - 1])
-
-    @property
-    def config_dir(self) -> str:
-        return getattr(self.__intelmq_bots, 'CONFIG_DIR')

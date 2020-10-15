@@ -10,14 +10,14 @@ __copyright__ = 'Copyright 2019-present, Restena CSIRT'
 __license__ = 'GPL v3+'
 
 import argparse
-import errno
 import os
 from argparse import Namespace
 from configparser import ConfigParser
-from typing import Dict, List, Type, Optional
+from typing import Dict, Type, Optional
 
 from intelmqtools.classes.intelmqtoolconfig import IntelMQToolConfig
-from intelmqtools.exceptions import SetupException, IntelMQToolException, IntelMQToolConfigException
+from intelmqtools.exceptions import SetupException, IntelMQToolException, IntelMQToolConfigException, \
+    IncorrectArgumentException
 from intelmqtools.tools.abstractbasetool import AbstractBaseTool
 from intelmqtools.utils import colorize_text
 
@@ -36,7 +36,9 @@ class IntelMQTool:
     def register_tool(self, clazz: Type[AbstractBaseTool]) -> None:
         instance = clazz(self.config)
         if not isinstance(instance, AbstractBaseTool):
-            raise IntelMQToolException('Tool {} does not not implement the AbstractBaseTool class'.format(clazz.__name__))
+            raise IntelMQToolException(
+                'Tool {} does not not implement the AbstractBaseTool class'.format(clazz.__name__)
+            )
         self.__tools[instance.get_arg_parser().prog] = instance
 
     def __setup_argument_parser(self) -> None:
@@ -67,11 +69,6 @@ class IntelMQTool:
                                  help='Location of the root used for development.\n'
                                       'Note: If this set the tool is automatically in dev mode.',
                                  default=None)
-        self.parser.add_argument('--intelmq',
-                                 type=str,
-                                 help='Location of the intelmq installation folder\n'
-                                      'Default is /usr/lib/python3.6/site-packages/intelmq',
-                                 default='/usr/lib/python3.6/site-packages/intelmq')
         self.parser.add_argument('--config',
                                  type=str,
                                  help='Configuration file\n'
@@ -81,7 +78,7 @@ class IntelMQTool:
         sub_parsers = self.parser.add_subparsers(help='Available tools', dest='command')
 
         # Update parsers
-        for tool in self.__tools:
+        for tool in self.__tools.values():
             arg_parser = tool.get_arg_parser()
             sub_parser = sub_parsers.add_parser(
                 arg_parser.prog,
@@ -94,14 +91,14 @@ class IntelMQTool:
             sub_parser._add_container_actions(arg_parser)
             sub_parser.description = arg_parser.description
 
-    def run_tool(self, key: str, args: Namespace) -> None:
+    def run_tool(self, key: str, args: Namespace) -> int:
         instance = self.__tools.get(key, None)
         if instance is None:
             raise IntelMQToolException('Program {} cannot be found'.format(key))
         else:
             instance.set_params(args.verbose, False)
             instance.set_config(self.config)
-            instance.start(args)
+            return instance.start(args)
 
     @staticmethod
     def __check_get_folder(tool_config: ConfigParser, section: str, section_key: str) -> Optional[str]:
@@ -120,6 +117,17 @@ class IntelMQTool:
         fake_root = args.fake
         config = IntelMQToolConfig()
         config.fake_root = fake_root
+
+        try:
+            intelmq_module = __import__('intelmq')
+            version = getattr(getattr(intelmq_module, 'version'), '__version_info__')
+            config.version = '{}.{}.{}'.format(version[0], version[1], version[len(version) - 1])
+            config.config_dir = getattr(intelmq_module, 'CONFIG_DIR')
+            config.intelmq_folder = os.path.dirname(intelmq_module.__file__)
+
+        except ModuleNotFoundError:
+            raise SetupException('It looks like that IntelMQ is not installed.')
+
         if bin_folder and bot_folder:
             config.bin_folder = bin_folder
             config.custom_bot_folder = bot_folder
@@ -150,9 +158,6 @@ class IntelMQTool:
                         config.fake_root = self.__check_get_folder(
                             config_parser, 'IntelMQ', 'fakeRoot'
                         )
-                        config.intelmq_folder = self.__check_get_folder(
-                            config_parser, 'IntelMQ', 'intelmqFolder'
-                        )
                         config_ok = True
             if not config_ok:
                 raise SetupException(
@@ -162,7 +167,7 @@ class IntelMQTool:
                 )
 
         try:
-            config.validlidate()
+            config.validate()
             self.config = config
         except IntelMQToolConfigException as error:
             message = 'Error: {}'.format(error)
@@ -186,16 +191,37 @@ class IntelMQTool:
 
         key = args.command
         if key:
-            # check if one has root access
             try:
-                os.mknod('/etc/foo')
-            except PermissionError as error:
-                if not args.dev:
-                    raise SetupException('You need root permissions to run this tool!')
+                if argv:
+                    # there are unknown commands
+                    raise IncorrectArgumentException('Unknown Arguments')
+                else:
+                    # check if one has root access
+                    try:
+                        os.mknod('/etc/foo')
+                    except PermissionError:
+                        if not args.dev:
+                            raise SetupException('You need root permissions to run this tool!')
+
+                    return self.run_tool(key, args)
+            except IncorrectArgumentException:
+                sub_parser = None
+                for item in getattr(getattr(self.parser, '_subparsers'), '_actions'):
+                    if isinstance(item, getattr(argparse, '_SubParsersAction')):
+                        sub_parser = item
+                if sub_parser:
+                    sub_parser = sub_parser.choices.get(key, None)
+                    if sub_parser:
+                        if sub_parser.prog.endswith(key):
+                            sub_parser.print_help()
+                            return -1
+                        return -2
+
+                raise IntelMQToolException('No Tools are defined')
 
         elif args.details:
-            print('IntelMQ Installation Directory: {}'.format(self.config.intelmq_folder))
             print('IntelMQ Version:                {}'.format(self.config.version))
+            print('IntelMQ Installation Directory: {}'.format(self.config.intelmq_folder))
             print('Configuration Directory:        {}'.format(self.config.config_dir))
             print('running BOTS File location:     {}'.format(self.config.running_bots_file))
             print('default BOTS File location:     {}'.format(self.config.base_bots_file))
@@ -203,5 +229,6 @@ class IntelMQTool:
             print('runtime.conf location:          {}'.format(self.config.runtime_file))
             print('Custom IntelMQ Bots location    {}'.format(self.config.custom_bot_folder))
             return 0
-
-        print(args)
+        else:
+            self.parser.print_help()
+            return -10

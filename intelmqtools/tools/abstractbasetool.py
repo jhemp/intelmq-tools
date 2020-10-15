@@ -60,7 +60,7 @@ class AbstractBaseTool(ABC):
         return self._arg_parser
 
     @abstractmethod
-    def start(self, args: Namespace) -> None:
+    def start(self, args: Namespace) -> int:
         pass
 
     @abstractmethod
@@ -70,3 +70,5 @@ class AbstractBaseTool(ABC):
     def set_default_arguments(self, arg_parser: ArgumentParser) -> None:
         arg_parser.add_argument('--version', action='version', version='%(prog)s {}'.format(self.get_version()))
 
+    def set_config(self, config: IntelMQToolConfig) -> None:
+        self.config = config
