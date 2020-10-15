@@ -77,17 +77,17 @@ class IntelMQToolConfig:
 
     @property
     def running_bots_file(self) -> str:
-        return os.path.join(self.config_dir, 'BOTS')
+        return self.__get_folder(os.path.join(self.config_dir, 'BOTS'))
 
     @property
     def defaults_conf_file(self) -> str:
-        return os.path.join(self.config_dir, 'defaults.conf')
+        return self.__get_folder(os.path.join(self.config_dir, 'defaults.conf'))
 
     @property
     def runtime_file(self) -> str:
-        return os.path.join(self.config_dir, 'runtime.conf')
+        return self.__get_folder(os.path.join(self.config_dir, 'runtime.conf'))
 
     @property
     def pipeline_file(self) -> str:
-        return os.path.join(self.config_dir, 'pipeline.conf')
+        return self.__get_folder(os.path.join(self.config_dir, 'pipeline.conf'))
 

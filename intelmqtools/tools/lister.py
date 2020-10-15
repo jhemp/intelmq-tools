@@ -29,19 +29,19 @@ class Lister(AbstractBaseTool):
 
     def start(self, args: Namespace) -> None:
         if args.installed:
-            bot_details = self.get_installed_bots(args.dev)[1]
+            bot_details = self.get_installed_bots()
             self.output(bot_details, args.full)
         elif args.customs:
-            bot_details = self.get_custom_bots(args.dev)[1]
+            bot_details = self.get_custom_bots()
             self.output(bot_details, args.full)
         elif args.uninstalled:
-            bot_details = self.get_uninstalled_bots(args.dev)[1]
+            bot_details = self.get_uninstalled_bots()
             self.output(bot_details, args.full)
         elif args.list:
-            bot_details = self.get_all_bots(args.dev)[1]
+            bot_details = self.get_all_bots()
             self.output(bot_details, args.full)
         elif args.original:
-            bot_details = self.get_original_bots(args.dev)[1]
+            bot_details = self.get_original_bots()
             self.output(bot_details, args.full)
         else:
             raise IncorrectArgumentException()

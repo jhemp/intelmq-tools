@@ -198,7 +198,7 @@ class IntelMQTool:
                     try:
                         os.mknod('/etc/foo')
                     except PermissionError:
-                        if not args.dev:
+                        if not self.config.is_dev:
                             raise SetupException('You need root permissions to run this tool!')
 
                     return self.run_tool(key, args)

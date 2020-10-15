@@ -26,5 +26,13 @@ class ToolException(IntelMQToolException):
     pass
 
 
+class MissingConfigurationException(ToolException):
+    pass
+
+
+class ConfigNotFoundException(ToolException):
+    pass
+
+
 class IncorrectArgumentException(ToolException):
     pass
