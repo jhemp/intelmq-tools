@@ -5,7 +5,7 @@ Created on 17.01.20
 """
 from typing import List, Union
 
-from scripts.classes.parameterissue import ParameterIssue
+from intelmqtools.classes.parameterissue import ParameterIssue
 
 __author__ = 'Weber Jean-Paul'
 __email__ = 'jean-paul.weber@restena.lu'

@@ -12,6 +12,8 @@ from argparse import ArgumentParser, Namespace
 
 from typing import List, Optional
 
+from intelmqtools.classes.botissue import BotIssue
+from intelmqtools.classes.generalissuedetail import ParameterIssueDetail, GeneralIssueDetail
 from intelmqtools.classes.intelmqbot import IntelMQBot
 from intelmqtools.classes.intelmqbotinstance import IntelMQBotInstance
 from intelmqtools.classes.intelmqtoolconfig import IntelMQToolConfig
@@ -20,6 +22,8 @@ __author__ = 'Weber Jean-Paul'
 __email__ = 'jean-paul.weber@restena.lu'
 __copyright__ = 'Copyright 2019-present, Restena CSIRT'
 __license__ = 'GPL v3+'
+
+from intelmqtools.classes.parameterissue import ParameterIssue
 
 from intelmqtools.exceptions import MissingConfigurationException, ConfigNotFoundException
 from intelmqtools.utils import pretty_json, colorize_text
@@ -63,7 +67,7 @@ class AbstractBaseTool(ABC):
 
     @abstractmethod
     def get_arg_parser(self) -> ArgumentParser:
-        return self._arg_parser
+        raise NotImplemented()
 
     @abstractmethod
     def start(self, args: Namespace) -> int:
@@ -181,7 +185,8 @@ class AbstractBaseTool(ABC):
             raise ConfigNotFoundException('File not found: {}.'.format(file_path))
         return config
 
-    def __set_BOTS(self, default_configs: dict, bot_details: List[IntelMQBot], running_bots: bool) -> None:
+    @staticmethod
+    def __set_bots(default_configs: dict, bot_details: List[IntelMQBot], running_bots: bool) -> None:
         for bot_type, bot_config_object in default_configs.items():
             for bot_name, bot_config in bot_config_object.items():
                 module_name = bot_config['module']
@@ -198,11 +203,11 @@ class AbstractBaseTool(ABC):
     def set_default_runtime_config(self, bot_details: List[IntelMQBot]) -> None:
         default_configs = self.get_config(self.config.base_bots_file)
         # fetch default configuration in BOTS file
-        self.__set_BOTS(default_configs, bot_details, False)
+        self.__set_bots(default_configs, bot_details, False)
 
         # fetch default configuration in BOTS file
         default_configs = self.get_config(self.config.running_bots_file)
-        self.__set_BOTS(default_configs, bot_details, True)
+        self.__set_bots(default_configs, bot_details, True)
 
         # fetch running configurations
         default_configs = self.get_config(self.config.runtime_file)
@@ -264,10 +269,10 @@ class AbstractBaseTool(ABC):
                                            pretty_json(bot_detail.default_parameters)))
         if full:
             print('{}:          {}'.format(colorize_text('Default Config', 'Cyan'),
-                                    pretty_json(bot_detail.custom_default_parameters)))
+                                           pretty_json(bot_detail.custom_default_parameters)))
         print('File:                    {}'.format(bot_detail.code_file))
         len_instances = len(bot_detail.instances)
-        print('Running Instances        {}'.format(colorize_text(len_instances, 'Magenta')))
+        print('Running Instances        {}'.format(colorize_text('{}'.format(len_instances), 'Magenta')))
         if len_instances > 0 and full:
             print('Intances: -----------------'.format(len_instances))
             counter = 1
@@ -296,3 +301,110 @@ class AbstractBaseTool(ABC):
 
     def get_installed_bots(self) -> List[IntelMQBot]:
         return self.__get_bots_by_install(True)
+
+    def get_different_configs(self, bot_details: List[IntelMQBot], type_: str) -> Optional[List[BotIssue]]:
+        differences = list()
+
+        for bot_detail in bot_details:
+
+            # To do this the bot has to be installed
+            if bot_detail.installed and type_ == 'BOTS':
+                item = BotIssue()
+                item.bot = bot_detail
+                general_issues = self.compare_dicts(
+                    bot_detail.default_parameters,
+                    bot_detail.custom_default_parameters,
+                    type_
+                )
+                if not general_issues.empty:
+                    item.issue = general_issues
+                    differences.append(item)
+            if bot_detail.installed and type_ == 'runtime':
+                for instance in bot_detail.instances:
+                    if bot_detail.default_parameters:
+                        parameters = bot_detail.default_parameters.get('parameters')
+                        if parameters:
+                            general_issues = self.compare_dicts(instance.parameters, parameters, 'parameters')
+                            if not general_issues.empty:
+                                item = BotIssue()
+                                item.bot = bot_detail
+                                item.issue = general_issues
+                                item.instance = instance
+                                differences.append(item)
+        if len(differences) > 0:
+            return differences
+        else:
+            return None
+
+    def compare_dicts(self, dict1: dict, dict2: dict, type_: str,
+                      previous_param_name: str = None) -> GeneralIssueDetail:
+        new_bot_issue = GeneralIssueDetail()
+        for key in dict1.keys():
+            if key not in dict2.keys():
+                new_bot_issue.additional_keys.append(key)
+        for key in dict2.keys():
+            if key not in dict1.keys():
+                new_bot_issue.missing_keys.append(key)
+
+        if type_ != 'parameters':
+            for key, value in dict1.items():
+                if previous_param_name:
+                    param_name = '{}.{}'.format(previous_param_name, key)
+                else:
+                    param_name = key
+                if param_name.startswith('.'):
+                    param_name = param_name[1:]
+                if isinstance(value, dict):
+                    if key not in new_bot_issue.missing_keys:
+                        value2 = dict2.get(key, {})
+                        sub_issue = self.compare_dicts(value, value2, type_, param_name)
+                        issue = ParameterIssueDetail()
+                        issue.parameter_name = param_name
+                        issue.additional_keys = sub_issue.additional_keys
+                        issue.missing_keys = sub_issue.missing_keys
+                        issue.different_values = sub_issue.different_values
+                        if not issue.empty:
+                            new_bot_issue.different_values.append(issue)
+                else:
+                    if key not in new_bot_issue.additional_keys:
+                        value2 = dict2[key]
+                        if value != value2:
+                            param_issue = ParameterIssue()
+                            param_issue.parameter_name = param_name
+                            param_issue.should_be = value
+                            param_issue.has_value = value2
+                            new_bot_issue.different_values.append(param_issue)
+
+        if len(new_bot_issue.missing_keys) == 0:
+            new_bot_issue.missing_keys = None
+        if len(new_bot_issue.additional_keys) == 0:
+            new_bot_issue.additional_keys = None
+        if len(new_bot_issue.different_values) == 0:
+            new_bot_issue.different_values = None
+        return new_bot_issue
+
+    def update_bots_file(self, bots: List[IntelMQBot], mode_: str) -> None:
+        intelmq_details, all_bots = self.get_installed_bots()
+        result_dict = {'Collector': dict(), 'Expert': dict(), 'Output': dict(), 'Parser': dict()}
+
+        for bots_bot in all_bots:
+            found = False
+            if mode_ in ['update', 'remove']:
+                for bot in bots:
+                    if bots_bot.code_module == bot.code_module:
+                        parameters = bot.default_parameters
+                        if parameters is None:
+                            # then it is a new one
+                            parameters = bot.custom_default_parameters
+                        bots_bot.default_parameters = parameters
+                        found = True
+                        break
+            if not (found and mode_ == 'remove'):
+                result_dict[bots_bot.bot_type][bots_bot.class_name] = bots_bot.get_bots_config(False)
+        if mode_ == 'insert':
+            for bot in bots:
+                bot.default_parameters = bot.custom_default_parameters
+                result_dict[bot.bot_type][bot.class_name] = bot.get_bots_config(False)
+
+        with open(intelmq_details.running_bots_file, "w") as f:
+            f.write(pretty_json(result_dict))

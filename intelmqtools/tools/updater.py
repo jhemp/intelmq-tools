@@ -7,14 +7,14 @@ import json
 from argparse import Namespace, ArgumentParser
 from typing import Union, List
 
-from scripts.classes.botissue import BotIssue
-from scripts.classes.generalissuedetail import ParameterIssueDetail, GeneralIssueDetail
-from scripts.classes.intelmqbot import IntelMQBot
-from scripts.classes.intelmqbotinstance import IntelMQBotInstance
-from scripts.classes.parameterissue import ParameterIssue
-from scripts.libs.abstractbase import AbstractBaseTool
-from scripts.libs.exceptions import IncorrectArgumentException
-from scripts.libs.utils import colorize_text, get_value, set_value, query_yes_no, pretty_json
+from intelmqtools.classes.botissue import BotIssue
+from intelmqtools.classes.generalissuedetail import ParameterIssueDetail, GeneralIssueDetail
+from intelmqtools.classes.intelmqbot import IntelMQBot
+from intelmqtools.classes.intelmqbotinstance import IntelMQBotInstance
+from intelmqtools.classes.parameterissue import ParameterIssue
+from intelmqtools.tools.abstractbasetool import AbstractBaseTool
+from intelmqtools.exceptions import IncorrectArgumentException
+from intelmqtools.utils import colorize_text, get_value, set_value, query_yes_no, pretty_json
 
 __author__ = 'Weber Jean-Paul'
 __email__ = 'jean-paul.weber@restena.lu'
@@ -40,46 +40,54 @@ class Updater(AbstractBaseTool):
         self.set_default_arguments(arg_parse)
         return arg_parse
 
-    def start(self, args: Namespace) -> None:
+    def start(self, args: Namespace) -> int:
         if args.bots or args.runtime:
 
             if args.auto:
                 print('{} Parameter values will not be changed!\n'.format(colorize_text('Note:', 'Red')))
 
-            bot_details = self.get_all_bots(args.dev)[1]
+            bot_details = self.get_all_bots()
             if args.bots:
                 default_issues = self.get_different_configs(bot_details, 'BOTS')
                 if default_issues:
-                    print('Found {} issues in BOTS file\n'.format(colorize_text(len(default_issues), 'Magenta')))
+                    print(
+                        'Found {} issues in BOTS file\n'.format(
+                            colorize_text('{}'.format(len(default_issues)), 'Magenta')
+                        )
+                    )
                     if default_issues:
                         print(colorize_text('Fixing BOTS File', 'Underlined'))
                         fixed_bots = self.handle_issues(default_issues, args.auto)
-                        self.update_bots_file(fixed_bots, 'update', args.dev)
+                        self.update_bots_file(fixed_bots, 'update')
+                        return 0
                 else:
                     print('There are not issues! Don\'t fix stuff which is not broken!')
+                    return -10
+
             elif args.runtime:
                 runtime_issues = self.get_different_configs(bot_details, 'runtime')
                 print(colorize_text('Fixing runtime.conf File', 'Underlined'))
                 fixed_bots = self.handle_runtime_issues(runtime_issues, args.auto)
                 if fixed_bots:
                     # save runtime.conf
-                    intelmq_details = self.get_intelmq_details(args.dev)
                     runtime_cfg = dict()
-                    with open(intelmq_details.runtime_file, 'r') as f:
+                    with open(self.config.runtime_file, 'r') as f:
                         runtime_cfg = json.loads(f.read())
                     for bot_instance in fixed_bots:
                         config = runtime_cfg.get(bot_instance.name)
                         if config:
                             runtime_cfg[bot_instance.name] = bot_instance.config
-                    with open(intelmq_details.runtime_file, 'w') as f:
+                    with open(self.config.runtime_file, 'w') as f:
                         f.write(pretty_json(runtime_cfg))
+                    return 0
                 else:
                     print('There are not issues! Don\'t fix stuff which is not broken!')
+                    return -10
         else:
             raise IncorrectArgumentException()
 
     def get_version(self) -> str:
-        return '0.1'
+        return '0.2'
 
     def handle_runtime_issues(self, issues: List[BotIssue], auto: bool) -> List[Union[IntelMQBotInstance]]:
         result = list()
@@ -101,13 +109,19 @@ class Updater(AbstractBaseTool):
             result.append(item.bot)
         return result
 
-    def __fix_issue(self, bot: Union[IntelMQBot, IntelMQBotInstance], issue: Union[ParameterIssue, ParameterIssueDetail, GeneralIssueDetail], auto: bool) -> None:
+    def __fix_issue(self,
+                    bot: Union[IntelMQBot, IntelMQBotInstance],
+                    issue: Union[ParameterIssue, ParameterIssueDetail, GeneralIssueDetail],
+                    auto: bool) -> None:
         parameter_name = None
         if hasattr(issue, 'parameter_name'):
             parameter_name = issue.parameter_name
         self.__fix_decider(bot, parameter_name, issue, auto)
 
-    def __fix_decider(self, bot: Union[IntelMQBot, IntelMQBotInstance], parameter_name, issue: Union[ParameterIssue, ParameterIssueDetail, GeneralIssueDetail], auto: bool):
+    def __fix_decider(self,
+                      bot: Union[IntelMQBot, IntelMQBotInstance],
+                      parameter_name, issue: Union[ParameterIssue, ParameterIssueDetail, GeneralIssueDetail],
+                      auto: bool):
         if isinstance(issue, GeneralIssueDetail) or isinstance(issue, ParameterIssueDetail):
 
             if issue.additional_keys:
@@ -171,17 +185,20 @@ class Updater(AbstractBaseTool):
             self.__fix_parameter_issue(bot, parameter_name, issue, auto)
 
     @staticmethod
-    def __fix_parameter_issue(bot: [IntelMQBot, IntelMQBotInstance], parameter_name: str, issue: ParameterIssue, auto: bool):
+    def __fix_parameter_issue(
+            bot: [IntelMQBot, IntelMQBotInstance],
+            parameter_name: str,
+            issue: ParameterIssue,
+            auto: bool):
         text = 'Parameter {} with Value: {} was {}.'.format(
             colorize_text(parameter_name, 'Red'),
             colorize_text(issue.should_be, 'Magenta'),
             colorize_text(issue.has_value, 'Gray'))
         if auto:
-            print(text  + ' Use Manual Processing for changing.')
+            print(text + ' Use Manual Processing for changing.')
         else:
             if query_yes_no('Do you want to replace ' + text, default='no'):
                 if isinstance(bot, IntelMQBot):
                     set_value(issue.parameter_name, bot.default_parameters, issue.should_be)
                 else:
                     set_value(issue.parameter_name, bot.config, issue.should_be)
-

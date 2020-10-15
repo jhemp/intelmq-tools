@@ -28,30 +28,32 @@ class Lister(AbstractBaseTool):
         arg_parse.add_argument('-l', '--list', default=False, help='List all BOTS', action='store_true')
         return arg_parse
 
-    def start(self, args: Namespace) -> None:
+    def start(self, args: Namespace) -> int:
         if args.installed:
             bot_details = self.get_installed_bots()
-            self.output(bot_details, args.full)
+            return self.output(bot_details, args.full)
         elif args.customs:
             bot_details = self.get_custom_bots()
-            self.output(bot_details, args.full)
+            return self.output(bot_details, args.full)
         elif args.uninstalled:
             bot_details = self.get_uninstalled_bots()
-            self.output(bot_details, args.full)
+            return self.output(bot_details, args.full)
         elif args.list:
             bot_details = self.get_all_bots()
-            self.output(bot_details, args.full)
+            return self.output(bot_details, args.full)
         elif args.original:
             bot_details = self.get_original_bots()
-            self.output(bot_details, args.full)
+            return self.output(bot_details, args.full)
         else:
             raise IncorrectArgumentException()
 
     def get_version(self) -> str:
-        return '0.0.1'
+        return '0.2'
 
-    def output(self, bot_details: List[IntelMQBot], full: bool) -> None:
+    def output(self, bot_details: List[IntelMQBot], full: bool) -> int:
         if bot_details:
             self.print_bot_details(bot_details, full)
+            return 0
         else:
             print('No bots found.')
+            return -10

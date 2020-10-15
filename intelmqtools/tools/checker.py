@@ -6,11 +6,11 @@ Created on 17.01.20
 from argparse import Namespace, ArgumentParser
 from typing import Union
 
-from scripts.classes.generalissuedetail import GeneralIssueDetail, ParameterIssueDetail
-from scripts.classes.parameterissue import ParameterIssue
-from scripts.libs.abstractbase import AbstractBaseTool
-from scripts.libs.exceptions import IncorrectArgumentException
-from scripts.libs.utils import colorize_text
+from intelmqtools.classes.generalissuedetail import GeneralIssueDetail, ParameterIssueDetail
+from intelmqtools.classes.parameterissue import ParameterIssue
+from intelmqtools.tools.abstractbasetool import AbstractBaseTool
+from intelmqtools.exceptions import IncorrectArgumentException
+from intelmqtools.utils import colorize_text
 
 __author__ = 'Weber Jean-Paul'
 __email__ = 'jean-paul.weber@restena.lu'
@@ -33,25 +33,36 @@ class Checker(AbstractBaseTool):
 
     def start(self, args: Namespace) -> None:
         if args.bots:
-            self.check_bots(args.full, args.dev)
+            self.check_bots(args.full)
         elif args.runtime:
-            self.check_runtime(args.full, args.dev)
+            self.check_runtime(args.full)
         else:
             raise IncorrectArgumentException()
 
     def get_version(self) -> str:
-        return '0.0.1'
+        return '0.2'
 
-    def __print_issue(self, issues: GeneralIssueDetail, full: bool, count: int = 0, print_lines: bool = True, include_params: bool = True):
+    def __print_issue(self, issues: GeneralIssueDetail,
+                      full: bool, count: int = 0,
+                      print_lines: bool = True,
+                      include_params: bool = True):
         bots = 'BOTS '
         if count > 0:
             bots = 'Running Configuration'
         if print_lines:
             print('----------------------------------------')
         if issues.additional_keys:
-            print('    ' * count + '{} has more keys:   {}'.format(bots, colorize_text(issues.additional_keys, 'Red')))
+            print(
+                '    ' * count + '{} has more keys:   {}'.format(
+                    bots, colorize_text('{}'.format(issues.additional_keys), 'Red')
+                )
+            )
         if issues.missing_keys:
-            print('    ' * count + '{} is missing keys: {}'.format(bots, colorize_text(issues.missing_keys, 'Magenta')))
+            print(
+                '    ' * count + '{} is missing keys: {}'.format(
+                    bots, colorize_text('{}'.format(issues.missing_keys), 'Magenta')
+                )
+            )
         if issues.different_values and include_params:
             param = 'Parameter(s)'
             if count > 0:
@@ -63,17 +74,25 @@ class Checker(AbstractBaseTool):
             print('----------------------------------------')
         print()
 
-    def print_bot_issue(self, issue: Union[ParameterIssueDetail, ParameterIssue], full: bool, count: int, include_params: bool) -> None:
-        issue_count = count + 1
+    def print_bot_issue(self,
+                        issue: Union[ParameterIssueDetail, ParameterIssue],
+                        full: bool,
+                        count: int,
+                        include_params: bool
+                        ) -> None:
         base = '    ' * count + 'For Parameter: {}'.format(colorize_text(issue.parameter_name, 'Yellow'))
         if isinstance(issue, ParameterIssueDetail):
             print('{} are:'.format(base))
             self.__print_issue(issue, full, count + 1, False, include_params)
         else:
-            print('{} has value {} but should be {}'.format(base, colorize_text(issue.has_value, 'Red'), colorize_text(issue.should_be, 'Magenta')))
+            print(
+                '{} has value {} but should be {}'.format(
+                    base, colorize_text(issue.has_value, 'Red'), colorize_text(issue.should_be, 'Magenta')
+                )
+            )
 
-    def check_bots(self, full: bool, dev: bool) -> None:
-        bot_details = self.get_installed_bots(dev)[1]
+    def check_bots(self, full: bool) -> None:
+        bot_details = self.get_installed_bots()
         issues = self.get_different_configs(bot_details, 'BOTS')
         if issues:
             for issue in issues:
@@ -82,8 +101,8 @@ class Checker(AbstractBaseTool):
         else:
             print('No issue found')
 
-    def check_runtime(self, full: bool, dev: bool) -> None:
-        bot_details = self.get_installed_bots(dev)[1]
+    def check_runtime(self, full: bool) -> None:
+        bot_details = self.get_installed_bots()
         issues = self.get_different_configs(bot_details, 'runtime')
         if issues:
             for issue in issues:
@@ -93,5 +112,3 @@ class Checker(AbstractBaseTool):
                 pass
         else:
             print('No issue found')
-
-

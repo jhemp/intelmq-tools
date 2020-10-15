@@ -5,10 +5,10 @@ Created on 17.01.20
 """
 from typing import Union
 
-from scripts.classes.generalissuedetail import ParameterIssueDetail, GeneralIssueDetail
-from scripts.classes.intelmqbot import IntelMQBot
-from scripts.classes.intelmqbotinstance import IntelMQBotInstance
-from scripts.classes.parameterissue import ParameterIssue
+from intelmqtools.classes.generalissuedetail import ParameterIssueDetail, GeneralIssueDetail
+from intelmqtools.classes.intelmqbot import IntelMQBot
+from intelmqtools.classes.intelmqbotinstance import IntelMQBotInstance
+from intelmqtools.classes.parameterissue import ParameterIssue
 
 __author__ = 'Weber Jean-Paul'
 __email__ = 'jean-paul.weber@restena.lu'

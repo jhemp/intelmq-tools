@@ -16,7 +16,9 @@ import sys
 
 from intelmqtools.exceptions import IntelMQToolException
 from intelmqtools.intelmqtool import IntelMQTool
+from intelmqtools.tools.checker import Checker
 from intelmqtools.tools.lister import Lister
+from intelmqtools.tools.updater import Updater
 
 
 def main() -> None:
@@ -25,10 +27,9 @@ def main() -> None:
 
         # Registering available tools
         tools.register_tool(Lister)
-        #self.__register_component(Updater)
+        tools.register_tool(Checker)
+        tools.register_tool(Updater)
         # tool_factory.register_component(Installer)
-        #self.__register_component(Lister)
-        #self.__register_component(Checker)
 
         sys.exit(tools.run())
     except IntelMQToolException as error:
