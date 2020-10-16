@@ -6,13 +6,13 @@ Created on 15.01.20
 import os
 import shutil
 from argparse import ArgumentParser, Namespace
-from typing import List, Dict
+from typing import List, Dict, Optional
 
-from intelmqtools.classes import CaseSensitiveConfigParser
 from intelmqtools.classes.intelmqbot import IntelMQBot
 from intelmqtools.classes.pipelinedetail import PipelineDetail
 from intelmqtools.tools.abstractbasetool import AbstractBaseTool
-from intelmqtools.exceptions import IncorrectArgumentException, ToolException
+from intelmqtools.exceptions import IncorrectArgumentException, ToolException, BotFileNotFoundException, \
+    MissingConfigurationException, BotAlreadyInstalledException, BotNotInstalledException
 from intelmqtools.utils import pretty_json
 
 __author__ = 'Weber Jean-Paul'
@@ -22,7 +22,6 @@ __license__ = 'GPL v3+'
 
 
 class Installer(AbstractBaseTool):
-    BASE = '/home/jpweber/workspace/intelmq-bots/fake_install'
 
     def get_arg_parser(self) -> ArgumentParser:
         arg_parse = ArgumentParser(prog='install', description='Tool for installing bots')
@@ -33,38 +32,102 @@ class Installer(AbstractBaseTool):
         self.set_default_arguments(arg_parse)
         return arg_parse
 
+    def __get_bot_details(self, bot_path: str) -> Optional[IntelMQBot]:
+        full_path = os.path.abspath(bot_path)
+        bots = self.get_custom_bots()
+        for bot in bots:
+            if bot.code_file == full_path:
+                return bot
+        return None
+
+    def manipulate_execution_file(self, bot: IntelMQBot, install: bool) -> None:
+        file_path = os.path.join(self.config.bin_folder, bot.code_module)
+        if install:
+            if os.path.exists(file_path):
+                raise ToolException(
+                    'Bot {} is not installed but file {} already exists. Please Remove it first'.format(
+                        bot.class_name, file_path
+                    )
+                )
+            else:
+                text = "#!/bin/python3.6\n" \
+                       "import {0}\n" \
+                       "import sys\n" \
+                       "sys.exit(\n" \
+                       "    {0}.{1}.run()\n" \
+                       ")".format(bot.code_module, bot.bot_alias)
+                with open(file_path, 'w+') as f:
+                    f.write(text)
+                # Note: must be in octal (771_8 = 457_10)
+                os.chmod(file_path, 493)
+                print('File {} created'.format(file_path))
+        else:
+            if os.path.exists(file_path):
+                print('Removed file {}'.format(file_path))
+                os.remove(file_path)
+            else:
+                print('Will not remove {} as it does not exist'.format(file_path))
+
+    def manipulate_bots_file(self, bot: IntelMQBot, install: bool) -> None:
+        if install:
+            installed_bots = self.get_installed_bots()
+            installed_bots.append(bot)
+            self.update_bots_file(installed_bots, 'insert')
+        else:
+            self.update_bots_file([bot], 'remove')
+
+    def check_if_bot_can_instance(self, bot: IntelMQBot) -> None:
+        module = __import__(bot.code_module)
+        try:
+            class_name = '{}.{}'.format(bot.code_module.split('.', 1)[1], bot.bot_alias)
+            clazz = module
+            for mod in class_name.split('.'):
+                clazz = getattr(clazz, mod)
+            try:
+                clazz.run()
+            except SystemExit as error:
+                if error.code == 1:
+                    pass
+                else:
+                    raise ToolException('Bot {} cannot be run'.format(bot.class_name))
+
+        except Exception as error:
+            raise ToolException('Bot {} cannot be initiated. Due to {}'.format(bot.class_name, error))
+
     def start(self, args: Namespace) -> int:
 
-        if args.install or args.uninstall:
-            if args.install:
-                bot_path = args.install
-                removal = False
+        if args.install:
+            bot_path = args.install
+            bot = self.__get_bot_details(bot_path)
+            if bot:
+                if bot.installed:
+                    raise BotAlreadyInstalledException('Bot in file {} is already installed'.format(bot_path))
+                else:
+                    if not self.config.is_dev:
+                        self.check_if_bot_can_instance(bot)
+                    self.manipulate_execution_file(bot, True)
+                    self.manipulate_bots_file(bot, True)
+                    print('Bot {} successfully installed'.format(bot.class_name))
+                    return 0
             else:
-                bot_path = args.uninstall
-                removal = True
+                raise ToolException('File {} is not part of the custom bot location'.format(bot_path))
 
-            custom_bots = self.get_custom_bots()
-            not_found = True
-            for custom_bot in custom_bots:
-                if bot_path in custom_bot.code_file:
-                    not_found = False
-                    break
-
-            if not_found:
-                print('Bot with file {} cannot be found'.format(bot_path))
+        elif args.uninstall:
+            bot_path = args.uninstall
+            bot = self.__get_bot_details(bot_path)
+            if bot:
+                if bot.installed:
+                    raise BotNotInstalledException('Bot in file {} is not installed'.format(bot_path))
+                else:
+                    pipeline_map = self.check_pipeline([bot])
+                    self.remove_runtime(pipeline_map, [bot])
+                    self.manipulate_execution_file(bot, False)
+                    self.manipulate_bots_file(bot, False)
+                    print('BOT Class {} was successfully uninstalled'.format(bot.class_name))
+                    return 0
             else:
-                mode_ = 'insert'
-                if removal:
-                    mode_ = 'remove'
-                    pipeline_map = self.check_pipeline([custom_bot])
-                    self.remove_runtime(pipeline_map, [custom_bot])
+                raise ToolException('File {} is not part of the custom bot location'.format(bot_path))
 
-                self.update_bots_file([custom_bot], mode_)
-
-                self.update_executable([custom_bot], mode_)
-                self.update_files([custom_bot], mode_)
-                print('BOT Class {} was successfully {}ed'.format(custom_bot.class_name, mode_))
-            return 0
         else:
             raise IncorrectArgumentException()
 
@@ -141,23 +204,3 @@ class Installer(AbstractBaseTool):
         with open(self.config.runtime_file, 'w') as f:
             f.write(pretty_json(runtime))
 
-    def update_files(self, bots: List[IntelMQBot], mode_: str) -> None:
-        for bot in bots:
-            directory_to_from = os.path.dirname(bot.code_file)
-            bot_directory = directory_to_from.replace(self.bot_location, '')
-            directory_to_to = '{}{}'.format(self.config.bot_folder, bot_directory)
-            if os.path.exists(directory_to_from):
-                if mode_ == 'remove':
-                    if os.path.exists(directory_to_to):
-                        shutil.rmtree(directory_to_to)
-                        print('Directory {} was removed'.format(directory_to_to))
-                    else:
-                        raise ToolException('Directory {} does not exit'.format(directory_to_to))
-                elif mode_ == 'insert':
-                    if os.path.exists(directory_to_to):
-                        print('Directory {} already exists skipping'.format(directory_to_to))
-                    else:
-                        shutil.copytree(directory_to_from, directory_to_to)
-                        print('Directory {} was created'.format(directory_to_to))
-            else:
-                raise ToolException('Directory {} does not exit'.format(directory_to_from))

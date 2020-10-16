@@ -10,7 +10,7 @@ import re
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, Namespace
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from intelmqtools.classes.botissue import BotIssue
 from intelmqtools.classes.generalissuedetail import ParameterIssueDetail, GeneralIssueDetail
@@ -25,8 +25,12 @@ __license__ = 'GPL v3+'
 
 from intelmqtools.classes.parameterissue import ParameterIssue
 
-from intelmqtools.exceptions import MissingConfigurationException, ConfigNotFoundException
+from intelmqtools.exceptions import MissingConfigurationException, ConfigNotFoundException, ToolException
 from intelmqtools.utils import pretty_json, colorize_text
+
+
+class ExtractionException(ToolException):
+    pass
 
 
 class AbstractBaseTool(ABC):
@@ -99,12 +103,8 @@ class AbstractBaseTool(ABC):
                     for bot_file in [f for f in os.listdir(bot_folder) if os.path.isfile(os.path.join(bot_folder, f))]:
                         if bot_file.endswith('.py'):
                             if bot_file != '__init__.py':
-                                file_name = os.path.join(bot_folder, bot_file)
-                                with open(file_name, 'r') as f:
-                                    file_data = f.read()
-                                bot_reference = self.__extract_data_from_text(file_data)
+                                # the bot_reference is actually how it is called
                                 bot_object = self.__get_bot_object(
-                                    bot_reference,
                                     bot_folder,
                                     bot_location,
                                     bot_file,
@@ -113,34 +113,50 @@ class AbstractBaseTool(ABC):
                                     bot_details.append(bot_object)
         return bot_details
 
-    @staticmethod
-    def __extract_data_from_text(file_data: str) -> Optional[str]:
-        bot_reference = None
-
+    def __extract_data_from_file(self, file_path: str) -> Optional[Tuple[str, str, str]]:
+        file_data = None
+        with open(file_path, 'r') as f:
+            file_data = f.read()
         if file_data:
             findings = re.search(r'^class (\w+\([^\n]+\)):', file_data, re.MULTILINE)
             if findings:
                 class_string_line = findings.groups(1)[0].strip()
-                for bot_type in ['Bot', 'CollectorBot', 'ParserBot', 'SQLBot', 'OutputBot']:
-                    extends_str = '({})'.format(bot_type)
-                    if class_string_line.endswith(extends_str):
-                        # this is a bot
-
-                        class_name = class_string_line.replace(extends_str, '')
+                # get extended class
+                try:
+                    bot_reference = None
+                    index_of_first_parentesis = class_string_line.index('(')
+                    class_name = class_string_line[0:index_of_first_parentesis]
+                    parent_class = class_string_line[index_of_first_parentesis + 1:-1]
+                    if 'bot' in parent_class.lower():
                         findings = re.search(r'^(\w+) = {}'.format(class_name), file_data, re.MULTILINE)
                         if findings:
                             bot_reference = findings.groups(1)[0].strip()
 
-        return bot_reference
+                        return bot_reference, class_name, parent_class
+                    else:
+                        self.logger.info('File {} is not a bot file, ignoring it'.format(file_path))
+
+                except ValueError:
+                    # basically the file is not usable
+                    return None
+            return None
+        raise ExtractionException('This should not happen as this is then an empty file.')
 
     def __get_bot_object(self,
-                         bot_reference: str,
                          bot_folder: str,
                          bot_location: str,
                          bot_file: str
                          ) -> Optional[IntelMQBot]:
-        if bot_reference:
+        file_name = os.path.join(bot_folder, bot_file)
+        extracted_data = self.__extract_data_from_file(file_name)
+
+        if extracted_data:
             bot_object = IntelMQBot()
+            bot_object.parent_class = extracted_data[2]
+            bot_object.class_name = extracted_data[1]
+            bot_object.bot_alias = extracted_data[0]
+            bot_object.code_file = file_name
+
             # Check if this is part of the installation
             bot_subpart = bot_folder.replace(bot_location, '')
             bot_module = bot_subpart.replace(os.path.sep, '.')
@@ -171,10 +187,10 @@ class AbstractBaseTool(ABC):
             bot_object.code_module = bot_module
             if bot_object.custom:
                 bot_object.custom_default_parameters['module'] = bot_module
-            bot_object.bot_alias = bot_reference
-            bot_object.code_file = os.path.join(bot_folder, bot_file)
+
             return bot_object
-        return None
+        else:
+            self.logger.info('File {} is not a bot file, ignoring it'.format(os.path.join(bot_folder, bot_file)))
 
     @staticmethod
     def get_config(file_path: str) -> dict:
@@ -384,9 +400,10 @@ class AbstractBaseTool(ABC):
         return new_bot_issue
 
     def update_bots_file(self, bots: List[IntelMQBot], mode_: str) -> None:
-        intelmq_details, all_bots = self.get_installed_bots()
+        all_bots = self.get_installed_bots()
         result_dict = {'Collector': dict(), 'Expert': dict(), 'Output': dict(), 'Parser': dict()}
 
+        """
         for bots_bot in all_bots:
             found = False
             if mode_ in ['update', 'remove']:
@@ -401,10 +418,12 @@ class AbstractBaseTool(ABC):
                         break
             if not (found and mode_ == 'remove'):
                 result_dict[bots_bot.bot_type][bots_bot.class_name] = bots_bot.get_bots_config(False)
+        """
         if mode_ == 'insert':
             for bot in bots:
                 bot.default_parameters = bot.custom_default_parameters
                 result_dict[bot.bot_type][bot.class_name] = bot.get_bots_config(False)
 
-        with open(intelmq_details.running_bots_file, "w") as f:
-            f.write(pretty_json(result_dict))
+        content = pretty_json(result_dict)
+        with open(self.config.running_bots_file, "w") as f:
+            f.write(content)

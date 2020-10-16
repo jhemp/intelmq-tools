@@ -26,7 +26,19 @@ class ToolException(IntelMQToolException):
     pass
 
 
+class BotFileNotFoundException(ToolException):
+    pass
+
+
 class MissingConfigurationException(ToolException):
+    pass
+
+
+class BotAlreadyInstalledException(ToolException):
+    pass
+
+
+class BotNotInstalledException(ToolException):
     pass
 
 

@@ -25,13 +25,14 @@ class IntelMQBot:
         self.code_module: str = None
         self.default_parameters: dict = None
         self.custom_default_parameters: dict = None
-        self.code_file = None
+        self.code_file: str = None
         self.installed = False
         self.intelmq_defaults = dict()
         self.custom = True
+        self.parent_class: str = None
 
     @property
-    def bot_type(self) -> str:
+    def bot_type(self) -> Optional[str]:
         for base in IntelMQToolConfig.BOT_FOLDER_BASES:
             path_part = '{0}{1}{0}'.format(os.path.sep, base)
             if path_part in self.code_file.lower():
