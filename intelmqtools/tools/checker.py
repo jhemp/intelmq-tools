@@ -29,6 +29,9 @@ class Checker(AbstractBaseTool):
                                help='Check if parameters of BOTS configuration matches the runtime one.\n'
                                     'Note: Compares Running BOTS file with running.conf.',
                                action='store_true')
+        arg_parse.add_argument('-s', '--strange', default=False,
+                               help='Check if there are strange BOTS',
+                               action='store_true')
         return arg_parse
 
     def start(self, args: Namespace) -> None:
@@ -36,6 +39,8 @@ class Checker(AbstractBaseTool):
             self.check_bots(args.full)
         elif args.runtime:
             self.check_runtime(args.full)
+        elif args.strange:
+            self.check_strange(args.full)
         else:
             raise IncorrectArgumentException()
 
@@ -112,3 +117,15 @@ class Checker(AbstractBaseTool):
                 pass
         else:
             print('No issue found')
+
+    def check_strange(self, full: bool) -> None:
+        strange_bots = self.get_strange_bots(True)
+        for strange_bot in strange_bots:
+            self.print_bot_meta(strange_bot)
+            self.print_bot_strange(strange_bot)
+            self.print_bot_full(strange_bot, full)
+            if strange_bot.issues:
+                for issue in strange_bot.issues:
+                    self.__print_issue(issue.issue, full, 1, True,  full)
+
+            print()

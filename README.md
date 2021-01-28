@@ -1,3 +1,5 @@
+NOTE: this version works but is still a bit rough on the edges
+
 # intelmq-tools
 Tools for intelmq. 
 This tool will help you to check up on your running configurations and 

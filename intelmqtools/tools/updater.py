@@ -4,6 +4,8 @@
 Created on 15.01.20
 """
 import json
+import os
+import shutil
 from argparse import Namespace, ArgumentParser
 from typing import Union, List
 
@@ -37,52 +39,105 @@ class Updater(AbstractBaseTool):
                                help='Fixes parameters of BOTS configuration matches the runtime one.\n'
                                     'Note: Compares Running BOTS file with running.conf.',
                                action='store_true')
+        arg_parse.add_argument('-s', '--strange', default=False,
+                               help='Fixes strange BOTS',
+                               action='store_true')
         self.set_default_arguments(arg_parse)
         return arg_parse
 
     def start(self, args: Namespace) -> int:
-        if args.bots or args.runtime:
 
-            if args.auto:
-                print('{} Parameter values will not be changed!\n'.format(colorize_text('Note:', 'Red')))
+        if args.auto:
+            print('{} Parameter values will not be changed!\n'.format(colorize_text('Note:', 'Red')))
 
-            bot_details = self.get_all_bots()
-            if args.bots:
-                default_issues = self.get_different_configs(bot_details, 'BOTS')
-                if default_issues:
-                    print(
-                        'Found {} issues in BOTS file\n'.format(
-                            colorize_text('{}'.format(len(default_issues)), 'Magenta')
-                        )
+        bot_details = self.get_all_bots()
+        if args.bots:
+            default_issues = self.get_different_configs(bot_details, 'BOTS')
+            if default_issues:
+                print(
+                    'Found {} issues in BOTS file\n'.format(
+                        colorize_text('{}'.format(len(default_issues)), 'Magenta')
                     )
-                    if default_issues:
-                        print(colorize_text('Fixing BOTS File', 'Underlined'))
-                        fixed_bots = self.handle_issues(default_issues, args.auto)
-                        self.update_bots_file(fixed_bots, 'update')
-                        return 0
-                else:
-                    print('There are not issues! Don\'t fix stuff which is not broken!')
-                    return -10
-
-            elif args.runtime:
-                runtime_issues = self.get_different_configs(bot_details, 'runtime')
-                print(colorize_text('Fixing runtime.conf File', 'Underlined'))
-                fixed_bots = self.handle_runtime_issues(runtime_issues, args.auto)
-                if fixed_bots:
-                    # save runtime.conf
-                    runtime_cfg = dict()
-                    with open(self.config.runtime_file, 'r') as f:
-                        runtime_cfg = json.loads(f.read())
-                    for bot_instance in fixed_bots:
-                        config = runtime_cfg.get(bot_instance.name)
-                        if config:
-                            runtime_cfg[bot_instance.name] = bot_instance.config
-                    with open(self.config.runtime_file, 'w') as f:
-                        f.write(pretty_json(runtime_cfg))
+                )
+                if default_issues:
+                    print(colorize_text('Fixing BOTS File', 'Underlined'))
+                    fixed_bots = self.handle_issues(default_issues, args.auto)
+                    self.update_bots_file(fixed_bots, 'update')
                     return 0
-                else:
-                    print('There are not issues! Don\'t fix stuff which is not broken!')
-                    return -10
+            else:
+                print('There are not issues! Don\'t fix stuff which is not broken!')
+                return -10
+
+        elif args.runtime:
+            runtime_issues = self.get_different_configs(bot_details, 'runtime')
+            print(colorize_text('Fixing runtime.conf File', 'Underlined'))
+            fixed_bots = self.handle_runtime_issues(runtime_issues, args.auto)
+            if fixed_bots:
+                # save runtime.conf
+                runtime_cfg = dict()
+                with open(self.config.runtime_file, 'r') as f:
+                    runtime_cfg = json.loads(f.read())
+                for bot_instance in fixed_bots:
+                    config = runtime_cfg.get(bot_instance.name)
+                    if config:
+                        runtime_cfg[bot_instance.name] = bot_instance.config
+                with open(self.config.runtime_file, 'w') as f:
+                    f.write(pretty_json(runtime_cfg))
+                return 0
+            else:
+                print('There are not issues! Don\'t fix stuff which is not broken!')
+                return -10
+        elif args.strange:
+
+            strange_bots = self.get_strange_bots(False)
+            for strange_bot in strange_bots:
+
+                if not strange_bot.bot.executable_exists and strange_bot.bot.running_config_exists:
+                    # create executable
+                    do_add = False
+                    text = '{} to {}'.format(strange_bot.bot.code_module, self.config.bin_folder)
+                    if args.auto:
+                        print('Adding executable {}'.format(text))
+                        do_add = True
+                    else:
+                        do_add = query_yes_no('Do you want to add {}'.format(text), default='no')
+                    if do_add:
+                        self.manipulate_execution_file(strange_bot.bot, True)
+
+                if not strange_bot.bot.default_config_exists:
+                    # add default config to BOTS
+                    if strange_bot.bot.custom_default_parameters:
+                        # there is a config present somewhere
+                        strange_bot.bot.default_parameters = strange_bot.bot.custom_default_parameters
+                        self.update_bots_file([strange_bot.bot], 'insert')
+
+                    else:
+                        do_remove = False
+                        # there is no config ask if you want to remove the bot
+                        text = '{}'.format(strange_bot.bot.class_name)
+                        print('Bot {} has no default configuration and is not registered in intelMQ'.format(text))
+                        do_remove = query_yes_no('Do you want to remove BOT {}'.format(text), default='no')
+                        if do_remove:
+                            self.update_bots_file([strange_bot.bot], 'remove')
+                            self.manipulate_execution_file(strange_bot.bot, False)
+                            # remove code of the bot
+                            directory = os.path.dirname(strange_bot.bot.code_file)
+                            shutil.rmtree(directory)
+                            print('Removed {}'.format(directory))
+                if strange_bot.bot.executable_exists and not strange_bot.bot.installed:
+                    # the bot has an executable but is not installed
+                    do_remove = False
+                    # there is no config ask if you want to remove the bot
+                    text = '{}'.format(strange_bot.bot.class_name)
+                    print('Bot {} has no default configuration but an executable'.format(text))
+                    if args.auto:
+                        print('Removing executable for BOT {}'.format(text))
+                        do_remove = True
+                    else:
+                        do_remove = query_yes_no('Do you want to remove executable for BOT {}'.format(text), default='no')
+                    if do_remove:
+                        self.manipulate_execution_file(strange_bot.bot, False)
+
         else:
             raise IncorrectArgumentException()
 

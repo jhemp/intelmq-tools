@@ -26,10 +26,40 @@ class IntelMQBot:
         self.default_parameters: dict = None
         self.custom_default_parameters: dict = None
         self.code_file: str = None
-        self.installed = False
         self.intelmq_defaults = dict()
         self.custom = True
         self.parent_class: str = None
+        self.executable_exists = False
+        self.has_issues = False
+
+    @property
+    def strange(self) -> bool:
+        if self.running_config_exists and not self.executable_exists:
+            return True
+
+        if not self.running_config_exists and self.executable_exists:
+            return True
+
+        if self.custom_default_parameters is None:
+            return True
+
+        if self.default_config_exists is None and self.custom_default_parameters is None:
+            return True
+
+        return False
+
+    @property
+    def default_config_exists(self) -> bool:
+        return self.custom_default_parameters is not None
+
+    @property
+    def running_config_exists(self) -> bool:
+        return self.default_parameters is not None
+
+    @property
+    def installed(self) -> bool:
+        # return self.executable_exists and self.config_exists
+        return self.executable_exists and self.running_config_exists
 
     @property
     def bot_type(self) -> Optional[str]:

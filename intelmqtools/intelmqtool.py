@@ -195,7 +195,11 @@ class IntelMQTool:
                 else:
                     # check if one has root access
                     try:
-                        os.mknod('/etc/foo')
+                        file = '/etc/foo'
+                        if os.path.exists(file):
+                            os.remove(file)
+                        else:
+                            os.mknod(file)
                     except PermissionError:
                         if not self.config.is_dev:
                             raise SetupException('You need root permissions to run this tool!')
