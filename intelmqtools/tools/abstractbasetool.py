@@ -85,10 +85,12 @@ class AbstractBaseTool(ABC):
         arg_parser.add_argument('--version', action='version', version='%(prog)s {}'.format(self.get_version()))
 
     def set_config(self, config: IntelMQToolConfig) -> None:
+        self.logger.debug('Setting Config for Tool {}'.format(self.get_class_name()))
         self.config = config
         self.__set_logger(self.config.log_lvl)
 
     def __get_bots(self, bot_location: str) -> List[IntelMQBot]:
+
         bot_details = list()
 
         bot_type_folders = list()
@@ -187,13 +189,15 @@ class AbstractBaseTool(ABC):
             bot_object.code_module = bot_module
             if bot_object.custom:
                 bot_object.custom_default_parameters['module'] = bot_module
-
+            self.logger.debug(
+                'Created BotObject for Bot {} Bots in Tool {}'.format(bot_object.class_name, self.get_class_name())
+            )
             return bot_object
         else:
             self.logger.info('File {} is not a bot file, ignoring it'.format(os.path.join(bot_folder, bot_file)))
 
-    @staticmethod
-    def get_config(file_path: str) -> dict:
+    def get_config(self, file_path: str) -> dict:
+        self.logger.debug('Loading configuration {}'.format(file_path))
         if os.path.exists(file_path):
             with open(file_path, 'r') as fpconfig:
                 config = json.load(fpconfig)
@@ -201,8 +205,8 @@ class AbstractBaseTool(ABC):
             raise ConfigNotFoundException('File not found: {}.'.format(file_path))
         return config
 
-    @staticmethod
-    def __set_bots(default_configs: dict, bot_details: List[IntelMQBot], running_bots: bool) -> None:
+    def __set_bots(self, default_configs: dict, bot_details: List[IntelMQBot], running_bots: bool) -> None:
+        self.logger.debug('Setting default config for bot objects')
         for bot_type, bot_config_object in default_configs.items():
             for bot_name, bot_config in bot_config_object.items():
                 module_name = bot_config['module']
@@ -217,6 +221,7 @@ class AbstractBaseTool(ABC):
                         break
 
     def set_default_runtime_config(self, bot_details: List[IntelMQBot]) -> None:
+        self.logger.debug('Setting default runtime config for bots')
         default_configs = self.get_config(self.config.base_bots_file)
         # fetch default configuration in BOTS file
         self.__set_bots(default_configs, bot_details, False)
@@ -238,11 +243,13 @@ class AbstractBaseTool(ABC):
                     bot_detail.instances.append(instance)
 
     def set_default_options(self, bots: List[IntelMQBot]) -> None:
+        self.logger.debug('Setting default options for bots')
         defaults_config = self.get_config(self.config.defaults_conf_file)
         for bot in bots:
             bot.intelmq_defaults = defaults_config
 
     def get_original_bots(self) -> List[IntelMQBot]:
+        self.logger.debug('Getting original bots for Tool {}'.format(self.get_class_name()))
         # get directory structure
         bot_location = os.path.join(self.config.intelmq_folder, 'bots')
         bot_details = self.__get_bots(bot_location)
@@ -256,6 +263,7 @@ class AbstractBaseTool(ABC):
         return bots
 
     def get_custom_bots(self) -> List[IntelMQBot]:
+        self.logger.debug('Getting custom bots for Tool {}'.format(self.get_class_name()))
         # get directory structure
         bot_details = self.__get_bots(self.config.custom_bot_folder)
         self.set_default_runtime_config(bot_details)
@@ -263,6 +271,7 @@ class AbstractBaseTool(ABC):
         return bot_details
 
     def get_all_bots(self) -> List[IntelMQBot]:
+        self.logger.debug('Getting all bots for Tool {}'.format(self.get_class_name()))
         bots = list()
         org_bots = self.get_original_bots()
         bot_details = self.get_custom_bots()
@@ -305,6 +314,7 @@ class AbstractBaseTool(ABC):
             self.print_bot_detail(bot_detail, full)
 
     def __get_bots_by_install(self, installed: bool) -> List[IntelMQBot]:
+        self.logger.debug('Getting bots by installed = {} for Tool {}'.format(installed, self.get_class_name()))
         bot_details = self.get_all_bots()
         result = list()
         for bot_detail in bot_details:
@@ -319,6 +329,9 @@ class AbstractBaseTool(ABC):
         return self.__get_bots_by_install(True)
 
     def get_different_configs(self, bot_details: List[IntelMQBot], type_: str) -> Optional[List[BotIssue]]:
+        self.logger.debug(
+            'Getting differences in configuration of type {} for Tool {}'.format(type_, self.get_class_name())
+        )
         differences = list()
 
         for bot_detail in bot_details:
@@ -402,8 +415,6 @@ class AbstractBaseTool(ABC):
     def update_bots_file(self, bots: List[IntelMQBot], mode_: str) -> None:
         all_bots = self.get_installed_bots()
         result_dict = {'Collector': dict(), 'Expert': dict(), 'Output': dict(), 'Parser': dict()}
-
-        """
         for bots_bot in all_bots:
             found = False
             if mode_ in ['update', 'remove']:
@@ -418,7 +429,6 @@ class AbstractBaseTool(ABC):
                         break
             if not (found and mode_ == 'remove'):
                 result_dict[bots_bot.bot_type][bots_bot.class_name] = bots_bot.get_bots_config(False)
-        """
         if mode_ == 'insert':
             for bot in bots:
                 bot.default_parameters = bot.custom_default_parameters
