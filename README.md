@@ -1,3 +1,5 @@
+Remark: Tool is not compatible with intelMQ 3.0.0
+
 NOTE: this version works but is still a bit rough on the edges
 
 # intelmq-tools

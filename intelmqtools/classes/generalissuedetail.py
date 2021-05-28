@@ -19,10 +19,21 @@ class GeneralIssueDetail:
         self.additional_keys: List[str] = list()
         self.missing_keys: List[str] = list()
         self.different_values: List[Union[ParameterIssueDetail, ParameterIssue]] = list()
+        self.referenced_bots: bool = True
+        self.referenced_running_bots: bool = True
 
     @property
     def empty(self):
-        return self.different_values is None and self.missing_keys is None and self.additional_keys is None
+        return len(self.different_values) == 0 and len(self.missing_keys) == 0 and len(self.additional_keys) == 0 and self.referenced_bots and self.referenced_running_bots
+
+    @property
+    def bots_issues(self) -> List[str]:
+        output = list()
+        if self.referenced_bots is False:
+            output.append('Bot is not referenced in default BOTS file')
+        if self.referenced_running_bots is False:
+            output.append('Bot is not referenced in running BOTS file')
+        return output
 
 
 class ParameterIssueDetail(GeneralIssueDetail):

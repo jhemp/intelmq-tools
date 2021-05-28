@@ -26,18 +26,18 @@ class Installer(AbstractBaseTool):
     def get_arg_parser(self) -> ArgumentParser:
         arg_parse = ArgumentParser(prog='install', description='Tool for installing bots')
         arg_parse.add_argument('-i', '--install', default=None,
-                               help='Path of the bot to install (Note: Module Folder only)', type=str)
+                               help='Module is used as parameter e.g. '
+                                    'intelmq.bots.collectors.shadowserver.collector_reports_api', type=str)
         arg_parse.add_argument('-u', '--uninstall', default=None,
-                               help='Path of the bot to uninstall (Note: Module Folder only)', type=str)
+                               help='Module is used as parameter e.g. '
+                                    'intelmq.bots.collectors.shadowserver.collector_reports_api', type=str)
         self.set_default_arguments(arg_parse)
         return arg_parse
 
-    def __get_bot_details(self, bot_path: str) -> Optional[IntelMQBot]:
-        full_path = os.path.abspath(bot_path)
-        # bots = self.get_custom_bots()
+    def __get_bot_details(self, module: str) -> Optional[IntelMQBot]:
         bots = self.get_all_bots()
         for bot in bots:
-            if bot.code_file == full_path:
+            if bot.module == module:
                 return bot
         return None
 
@@ -52,25 +52,25 @@ class Installer(AbstractBaseTool):
     def start(self, args: Namespace) -> int:
 
         if args.install:
-            bot_path = args.install
-            bot = self.__get_bot_details(bot_path)
+            module = args.install
+            bot = self.__get_bot_details(module)
             if bot:
                 if bot.installed:
-                    raise BotAlreadyInstalledException('Bot in file {} is already installed'.format(bot_path))
+                    raise BotAlreadyInstalledException('Bot of module {} is already installed'.format(module))
                 else:
                     self.manipulate_execution_file(bot, True)
                     self.manipulate_bots_file(bot, True)
                     print('Bot {} successfully installed'.format(bot.class_name))
                     return 0
             else:
-                raise ToolException('File {} is not part of the custom bot location'.format(bot_path))
+                raise ToolException('Module {} cannot be found. Please verify path'.format(module))
 
         elif args.uninstall:
-            bot_path = args.uninstall
-            bot = self.__get_bot_details(bot_path)
+            module = args.uninstall
+            bot = self.__get_bot_details(module)
             if bot:
                 if bot.installed:
-                    raise BotNotInstalledException('Bot in file {} is not installed'.format(bot_path))
+                    raise BotNotInstalledException('Bot of module {} is not installed'.format(module))
                 else:
                     pipeline_map = self.check_pipeline([bot])
                     self.remove_runtime(pipeline_map, [bot])
@@ -79,7 +79,7 @@ class Installer(AbstractBaseTool):
                     print('BOT Class {} was successfully uninstalled'.format(bot.class_name))
                     return 0
             else:
-                raise ToolException('File {} is not part of the custom bot location'.format(bot_path))
+                raise ToolException('Module {} cannot be found. Please verify path'.format(module))
 
         else:
             raise IncorrectArgumentException()
@@ -116,7 +116,7 @@ class Installer(AbstractBaseTool):
                 if item:
                     if item.destinations or item.source:
                         # the bot is still used!
-                        raise ToolException('The Bot {} is still used in the pipes. Remove pipes first.'.format(bot.code_file))
+                        raise ToolException('The Bot {} is still used in the pipes. Remove pipes first.'.format(bot.file_path))
         return pipeline_map
 
     def remove_runtime(self, pipeline_map: Dict[str, PipelineDetail],

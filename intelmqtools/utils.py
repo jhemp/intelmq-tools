@@ -4,12 +4,15 @@
 Created on 15.01.20
 """
 import json
+import os
 import sys
 
 __author__ = 'Weber Jean-Paul'
 __email__ = 'jean-paul.weber@restena.lu'
 __copyright__ = 'Copyright 2019-present, Restena CSIRT'
 __license__ = 'GPL v3+'
+
+from intelmqtools.classes.intelmqbot import IntelMQBot
 
 TYPES = {
     'ENDC': '\033[0m',
@@ -126,3 +129,16 @@ def set_value(key: str, dictionary: dict, value: any) -> any:
     for item in keys[:-1]:
         result = result[item]
     result[keys[-1]] = value
+
+
+def create_executable(bot: IntelMQBot, file_path: str) -> None:
+    text = "#!/bin/python3\n" \
+           "import {0}\n" \
+           "import sys\n" \
+           "sys.exit(\n" \
+           "    {0}.{1}.run()\n" \
+           ")".format(bot.module, bot.bot_alias)
+    with open(file_path, 'w+') as f:
+        f.write(text)
+    # Note: must be in octal (771_8 = 457_10)
+    os.chmod(file_path, 493)

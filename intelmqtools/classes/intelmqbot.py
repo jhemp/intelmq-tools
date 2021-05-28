@@ -6,6 +6,7 @@ Created on 17.01.20
 import os
 from typing import List, Optional
 
+from intelmqtools.classes.intelmqbotconfig import IntelMQBotConfig
 from intelmqtools.classes.intelmqbotinstance import IntelMQBotInstance
 
 __author__ = 'Weber Jean-Paul'
@@ -19,104 +20,71 @@ from intelmqtools.classes.intelmqtoolconfig import IntelMQToolConfig
 class IntelMQBot:
 
     def __init__(self):
-        self.class_name: str = None
-        self.bot_alias: str = None
+        self.bot_alias: Optional[str] = None
         self.instances: List[IntelMQBotInstance] = list()
-        self.code_module: str = None
-        self.default_parameters: dict = None
-        self.custom_default_parameters: dict = None
-        self.code_file: str = None
-        self.intelmq_defaults = dict()
+
+        # class/code details
+        self.class_name: Optional[str] = None
+        self.module: Optional[str] = None
+        self.file_path: Optional[str] = None
+        self.parent_class: Optional[str] = None
+
+        # misc
         self.custom = True
-        self.parent_class: str = None
-        self.executable_exists = False
         self.has_issues = False
+        self.executable_exists = False
+
+        # bot details and configuration
+        self.bots_config: Optional[IntelMQBotConfig] = None
+        self.running_config: Optional[dict] = None
+        self.default_bots: Optional[IntelMQBotConfig] = None
 
     @property
-    def strange(self) -> bool:
-        if self.running_config_exists and not self.executable_exists:
-            return True
-
-        if not self.running_config_exists and self.executable_exists:
-            return True
-
-        if self.custom_default_parameters is None:
-            return True
-
-        if self.default_config_exists is None and self.custom_default_parameters is None:
-            return True
-
-        return False
-
-    @property
-    def default_config_exists(self) -> bool:
-        return self.custom_default_parameters is not None
-
-    @property
-    def running_config_exists(self) -> bool:
-        return self.default_parameters is not None
-
-    @property
-    def installed(self) -> bool:
-        # return self.executable_exists and self.config_exists
-        return self.executable_exists and self.running_config_exists
+    def executable_name(self) -> str:
+        return self.module
 
     @property
     def bot_type(self) -> Optional[str]:
         for base in IntelMQToolConfig.BOT_FOLDER_BASES:
             path_part = '{0}{1}{0}'.format(os.path.sep, base)
-            if path_part in self.code_file.lower():
+            if path_part in self.file_path.lower():
                 return base.title()[:-1]
 
     @property
     def entry_point(self) -> str:
-        entry_point = '{}:{}.run'.format(self.code_module, self.bot_alias)
+        entry_point = '{}:{}.run'.format(self.module, self.bot_alias)
         return entry_point
-
-    @property
-    def description(self) -> str:
-        if self.default_parameters:
-            return self.default_parameters.get('description', None)
-        elif self.custom_default_parameters:
-            return self.custom_default_parameters.get('description', None)
-        else:
-            return 'No description specified in configuration'
 
     @property
     def in_use(self) -> bool:
         return len(self.instances) > 0
 
-    @property
-    def configuration(self) -> Optional[dict]:
-        result = dict()
-        if self.default_parameters:
-            result.update(self.default_parameters)
-        if self.intelmq_defaults:
-            result.update(self.intelmq_defaults)
-        if len(result) > 0:
-            return result
-        else:
-            return None
+    def __repr__(self):
+        return '{}({})'.format(self.class_name, self.parent_class)
 
     @property
-    def module(self) -> str:
-        return self.code_module.rsplit('.', 1)[0]
-
-    def get_bots_config(self, full: bool) -> dict:
-
-        if self.default_parameters:
-            configuration = self.default_parameters
+    def description(self) -> str:
+        if self.default_bots and self.default_bots.description:
+            return self.default_bots.description
+        if self.bots_config and self.bots_config.description:
+            return self.bots_config.description
         else:
-            # if there is an unreferenced bot
-            configuration = {
-                'description': self.description,
-                'module': self.code_module,
-                'parameters': dict()
-            }
-        result = {
-            self.bot_type: configuration
-        }
-        if full:
-            return result
+            return 'Could not find description'
+
+    @property
+    def installed(self) -> bool:
+        return self.bots_config is not None and self.executable_exists
+
+    @property
+    def strange(self) -> bool:
+        if self.bots_config:
+            if not self.executable_exists:
+                return True
         else:
-            return result[self.bot_type]
+            if self.executable_exists:
+                return True
+        return False
+
+    @property
+    def has_running_config(self) -> bool:
+        return len(self.instances) > 0

@@ -3,21 +3,28 @@
 """
 Created on 15.01.20
 """
+import importlib
+import inspect
 import json
 import logging
 import os
 import re
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, Namespace
+from os.path import basename
+from types import FunctionType
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
+
+from intelmq.lib.bot import Bot
 
 from intelmqtools.classes.botissue import BotIssue
-from intelmqtools.classes.generalissuedetail import ParameterIssueDetail, GeneralIssueDetail
-from intelmqtools.classes.intelmqbot import IntelMQBot
+from intelmqtools.classes.generalissuedetail import GeneralIssueDetail
+from intelmqtools.classes.intelmqbot import IntelMQBot, IntelMQBotConfig
 from intelmqtools.classes.intelmqbotinstance import IntelMQBotInstance
 from intelmqtools.classes.intelmqtoolconfig import IntelMQToolConfig
 from intelmqtools.classes.strangebot import StrangeBot
+
 
 __author__ = 'Weber Jean-Paul'
 __email__ = 'jean-paul.weber@restena.lu'
@@ -27,7 +34,7 @@ __license__ = 'GPL v3+'
 from intelmqtools.classes.parameterissue import ParameterIssue
 
 from intelmqtools.exceptions import MissingConfigurationException, ConfigNotFoundException, ToolException
-from intelmqtools.utils import pretty_json, colorize_text
+from intelmqtools.utils import pretty_json, colorize_text, create_executable
 
 
 class ExtractionException(ToolException):
@@ -91,9 +98,13 @@ class AbstractBaseTool(ABC):
         self.__set_logger(self.config.log_lvl)
 
     def __get_bots(self, bot_location: str) -> List[IntelMQBot]:
-
         bot_details = list()
 
+        # collect possible bot types
+        possible_main_classes = list()
+        for subclass in Bot.__subclasses__():
+            possible_main_classes.append(subclass.__name__)
+        possible_main_classes.append('Bot')
         bot_type_folders = list()
         for bot_folder_base in IntelMQToolConfig.BOT_FOLDER_BASES:
             bot_type_folders.append(os.path.join(bot_location, bot_folder_base))
@@ -105,19 +116,20 @@ class AbstractBaseTool(ABC):
                 if os.path.isdir(bot_folder):
                     for bot_file in [f for f in os.listdir(bot_folder) if os.path.isfile(os.path.join(bot_folder, f))]:
                         if bot_file.endswith('.py'):
-                            if bot_file != '__init__.py':
-                                # the bot_reference is actually how it is called
-                                bot_object = self.__get_bot_object(
-                                    bot_folder,
-                                    bot_location,
-                                    bot_file,
-                                )
-                                if bot_object:
-                                    bot_details.append(bot_object)
+                            # the bot_reference is actually how it is called
+                            bot_object = self.__get_bot_object(
+                                bot_folder,
+                                bot_location,
+                                bot_file,
+                                possible_main_classes
+                            )
+                            if bot_object:
+                                bot_details.append(bot_object)
         return bot_details
 
-    def __extract_data_from_file(self, file_path: str) -> Optional[Tuple[str, str, str]]:
+    def __extract_data_from_file(self, file_path: str, possible_main_classes: List[str]) -> Optional[Tuple[str, str, str]]:
         file_data = None
+        self.logger.debug('Opening "{}"'.format(file_path))
         with open(file_path, 'r') as f:
             file_data = f.read()
         if file_data:
@@ -130,7 +142,16 @@ class AbstractBaseTool(ABC):
                     index_of_first_parentesis = class_string_line.index('(')
                     class_name = class_string_line[0:index_of_first_parentesis]
                     parent_class = class_string_line[index_of_first_parentesis + 1:-1]
-                    if 'bot' in parent_class.lower():
+                    if ',' in parent_class:
+                        # this is multiple inheritance
+                        for item in possible_main_classes:
+                            if item in parent_class:
+                                # if the base class is found then return this as parent as the other inheritance is
+                                # considered as a part of the bot package
+                                parent_class = item
+                                break
+                    if parent_class in possible_main_classes:
+                        # this is a bot class
                         findings = re.search(r'^(\w+) = {}'.format(class_name), file_data, re.MULTILINE)
                         if findings:
                             bot_reference = findings.groups(1)[0].strip()
@@ -143,28 +164,34 @@ class AbstractBaseTool(ABC):
                     # basically the file is not usable
                     return None
             return None
-        raise ExtractionException('This should not happen as this is then an empty file.')
+        else:
+            self.logger.debug('File "" is empty, ignoring'.format(file_path))
 
     def __get_bot_object(self,
                          bot_folder: str,
                          bot_location: str,
-                         bot_file: str
+                         bot_file: str,
+                         possible_main_classes: List[str]
                          ) -> Optional[IntelMQBot]:
         file_name = os.path.join(bot_folder, bot_file)
-        extracted_data = self.__extract_data_from_file(file_name)
+        # extracted_data = bot_reference, class_name, parent_class
+        extracted_data = self.__extract_data_from_file(file_name, possible_main_classes)
 
         if extracted_data:
             bot_object = IntelMQBot()
             bot_object.parent_class = extracted_data[2]
             bot_object.class_name = extracted_data[1]
             bot_object.bot_alias = extracted_data[0]
-            bot_object.code_file = file_name
+            bot_object.file_path = file_name
 
             # Check if this is part of the installation
             bot_subpart = bot_folder.replace(bot_location, '')
             bot_module = bot_subpart.replace(os.path.sep, '.')
+            bot_module = '{}.{}'.format(bot_module, bot_file.replace('.py', ''))
+
             if self.config.intelmq_folder in bot_folder:
                 bot_module = 'intelmq.bots{}'.format(bot_module)
+                bot_object.module = bot_module
                 bot_object.custom = False
             else:
                 # this is a custom bot
@@ -173,34 +200,72 @@ class AbstractBaseTool(ABC):
                 config_path = os.path.join(bot_folder, 'config.json')
                 bot_object.custom = True
                 if os.path.exists(config_path):
+                    self.logger.debug('Using config.json for bot {}'.format(bot_module))
                     with open(config_path) as f:
                         default_custom_config = json.load(f)
-                    for key, values in default_custom_config.items():
-                        bot_object.custom_default_parameters = values
-                        bot_object.class_name = key
                 else:
-                    # this is a custom bot's config is missing
+                    self.logger.debug('Configuration file config.json is not existing for bot {}'.format(bot_module))
+                    default_custom_config = (bot_object.class_name, {'module': bot_module, 'description': 'NotSet'})
 
-                    if self.config.custom_bot_folder in bot_location:
-                        raise MissingConfigurationException(
-                            'Configuration for bot {} is missing. Create in in file {}'.format(bot_module, config_path)
-                        )
+                # setting the configuration
+                configuration_element = default_custom_config.popitem()
+                config = IntelMQBotConfig()
+                config.name = configuration_element[0]
+                config.description = configuration_element[1].get('description', 'NotSet')
+                config.parameters = configuration_element[1].get('parameters', {})
+                bot_object.default_bots = config
+                bot_object.module = bot_module
 
-            bot_module = '{}.{}'.format(bot_module, bot_file.replace('.py', ''))
-            bot_object.code_module = bot_module
-            if bot_object.custom:
-                bot_object.custom_default_parameters['module'] = bot_module
             self.logger.debug(
                 'Created BotObject for Bot {} Bots in Tool {}'.format(bot_object.class_name, self.get_class_name())
             )
 
             # Check if the executable exists
-            path = os.path.join(self.config.bin_folder, bot_object.code_module)
+            path = os.path.join(self.config.bin_folder, bot_object.executable_name)
             bot_object.executable_exists = os.path.exists(path)
+
+            # check check also in the instance as there may be configuration details after intelmq 2.3.2
+            # this is basically also a verification if they match the bots config
+            # Note: This does not work for self.parameters fields!
+            # Note2: The class parameters have priority
+            spec = importlib.util.spec_from_file_location(bot_object.module, bot_object.file_path)
+            bot_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(bot_module)
+            bot_class = getattr(bot_module, bot_object.class_name)
+            parent_class = getattr(bot_module, bot_object.parent_class)
+            parent_fields = self.get_fields(parent_class)
+            fields = list()
+            class_fields = self.get_fields(bot_class)
+            for item in class_fields:
+                if item not in parent_fields:
+                    fields.append(item)
+            if fields:
+                if bot_object.default_bots is None:
+                    bot_object.default_bots = IntelMQBotConfig()
+
+                for field in fields:
+                    bot_object.default_bots.parameters[field] = getattr(bot_class, field)
+
+                # set default values if set in the file itself
+                name = getattr(bot_class, 'name')
+                if name:
+                    bot_object.default_bots.name = name
+                description = getattr(bot_class, 'description')
+                if description:
+                    bot_object.default_bots.description = description
 
             return bot_object
         else:
             self.logger.info('File {} is not a bot file, ignoring it'.format(os.path.join(bot_folder, bot_file)))
+
+    @staticmethod
+    def get_fields(clazz: Bot) -> List[str]:
+        output = list()
+        for i in inspect.getmembers(clazz):
+            if not i[0].startswith('_'):
+                if not isinstance(i[1], FunctionType):
+                    output.append(i[0])
+        return output
 
     def get_config(self, file_path: str) -> dict:
         self.logger.debug('Loading configuration {}'.format(file_path))
@@ -211,70 +276,90 @@ class AbstractBaseTool(ABC):
             raise ConfigNotFoundException('File not found: {}.'.format(file_path))
         return config
 
+    def __get_intelmq_bot_config(self, bot_name: str, data: dict) -> IntelMQBotConfig:
+        self.logger.debug('Creating bot config for bot {}'.format(bot_name))
+        output = IntelMQBotConfig()
+        output.name = bot_name
+        output.description = data.get('description', 'NotSet')
+        output.parameters = data.get('parameters', {})
+        return output
+
     def __set_bots(self, default_configs: dict, bot_details: List[IntelMQBot], running_bots: bool) -> None:
         self.logger.debug('Setting default config for bot objects')
         for bot_type, bot_config_object in default_configs.items():
             for bot_name, bot_config in bot_config_object.items():
                 module_name = bot_config['module']
                 for bot_detail in bot_details:
-                    if bot_detail.code_module == module_name:
+                    if bot_detail.module == module_name:
                         if running_bots:
-                            bot_detail.default_parameters = bot_config
-                            # if a bot is registered in the BOTS file then it is installed, however it is only really
-                            # installed if also the config is set
-
+                            bot_detail.bots_config = self.__get_intelmq_bot_config(bot_name, bot_config)
                         else:
-                            bot_detail.custom_default_parameters = bot_config
+                            bot_detail.default_bots = self.__get_intelmq_bot_config(bot_name, bot_config)
                         break
 
-    def set_default_runtime_config(self, bot_details: List[IntelMQBot]) -> None:
+    def __get_intelmq_instance(self, bot_name: str, bot_detail: IntelMQBot, data: dict) -> IntelMQBotInstance:
+        self.logger.debug('Creating instance object for {}'.format(bot_name))
+        instance = IntelMQBotInstance()
+        instance.name = data['name']
+        instance.description = data['description']
+        instance.bot_id = data['bot_id']
+        instance.group = data['group']
+        instance.groupname = data['groupname']
+        instance.module = data['module']
+        instance.run_mode = data['run_mode']
+        instance.parameters = data['parameters']
+        instance.enabled = data['enabled']
+        instance.bot = bot_detail
+        return instance
+
+    def set_bots_runtime_config(self, bot_details: List[IntelMQBot]) -> None:
         self.logger.debug('Setting default runtime config for bots')
         default_configs = self.get_config(self.config.base_bots_file)
         # fetch default configuration in BOTS file
         self.__set_bots(default_configs, bot_details, False)
 
-        # fetch default configuration in BOTS file
+        # fetch running configuration in BOTS file
         default_configs = self.get_config(self.config.running_bots_file)
         self.__set_bots(default_configs, bot_details, True)
 
-        # fetch running configurations
+        # fetch runtime configurations
         default_configs = self.get_config(self.config.runtime_file)
         for bot_name, bot_config_object in default_configs.items():
             for bot_detail in bot_details:
                 module_name = bot_config_object['module']
-                if bot_detail.code_module == module_name:
-                    instance = IntelMQBotInstance()
-                    instance.name = bot_name
-                    instance.config = bot_config_object
-                    instance.bot = bot_detail
+                if bot_detail.module == module_name:
+                    instance = self.__get_intelmq_instance(bot_name, bot_detail, bot_config_object)
                     bot_detail.instances.append(instance)
 
-    def set_default_options(self, bots: List[IntelMQBot]) -> None:
+    def set_bot_defaults(self, bots: List[IntelMQBot]) -> None:
         self.logger.debug('Setting default options for bots')
         defaults_config = self.get_config(self.config.defaults_conf_file)
         for bot in bots:
-            bot.intelmq_defaults = defaults_config
+            bot.default_parameters = defaults_config
 
     def get_original_bots(self) -> List[IntelMQBot]:
         self.logger.debug('Getting original bots for Tool {}'.format(self.get_class_name()))
         # get directory structure
         bot_location = os.path.join(self.config.intelmq_folder, 'bots')
         bot_details = self.__get_bots(bot_location)
-        self.set_default_runtime_config(bot_details)
-        self.set_default_options(bot_details)
+        # set defaults.conf
+        self.set_bot_defaults(bot_details)
+        # set runtime.conf and BOTS details
+        self.set_bots_runtime_config(bot_details)
+        # self BOTS details
+
         bots = list()
         for bot_detail in bot_details:
             if not bot_detail.custom:
                 bots.append(bot_detail)
-
         return bots
 
     def get_custom_bots(self) -> List[IntelMQBot]:
         self.logger.debug('Getting custom bots for Tool {}'.format(self.get_class_name()))
         # get directory structure
         bot_details = self.__get_bots(self.config.custom_bot_folder)
-        self.set_default_runtime_config(bot_details)
-        self.set_default_options(bot_details)
+        self.set_bots_runtime_config(bot_details)
+        self.set_bot_defaults(bot_details)
         return bot_details
 
     def get_all_bots(self) -> List[IntelMQBot]:
@@ -287,34 +372,45 @@ class AbstractBaseTool(ABC):
 
     @staticmethod
     def print_bot_meta(bot_detail: IntelMQBot) -> None:
-        type_text = bot_detail.bot_type
-        if bot_detail.custom:
+        internal_detail = bot_detail
+        if isinstance(bot_detail, StrangeBot):
+            internal_detail = internal_detail.bot
+
+        type_text = internal_detail.bot_type
+        if internal_detail.custom:
             type_text = '{} (Custom)'.format(type_text)
         print('BOT Type:                {}'.format(colorize_text(type_text, 'Gray')))
-        print('BOT Class:               {}'.format(colorize_text(bot_detail.class_name, 'LightYellow')))
-        print('Description:             {}'.format(colorize_text(bot_detail.description, 'LightGray')))
-        print('Module:                  {}'.format(bot_detail.code_module))
-        print('File:                    {}'.format(bot_detail.code_file))
+        print('BOT Class:               {}'.format(colorize_text(internal_detail.class_name, 'LightYellow')))
+        print('Description:             {}'.format(colorize_text(internal_detail.description, 'LightGray')))
+        print('Module:                  {}'.format(internal_detail.module))
+        print('File:                    {}'.format(internal_detail.file_path))
 
     def print_bot_detail(self, bot_detail: IntelMQBot, full: bool = False) -> None:
         self.print_bot_meta(bot_detail)
-        print('Installed:               {}'.format(bot_detail.installed))
+        strange = bot_detail.strange
+        if strange:
+            strange = colorize_text(strange, 'Red')
+        print('Installed/Strange:       {}/{}'.format(bot_detail.installed, strange))
         self.print_bot_full(bot_detail, full)
 
     @staticmethod
     def print_bot_full(bot_detail: IntelMQBot, full: bool = False) -> None:
-        if full and bot_detail.installed:
+        internal_detail = bot_detail
+        if isinstance(bot_detail, StrangeBot):
+            internal_detail = internal_detail.bot
+
+        if full and internal_detail.installed:
             print('{}:          {}'.format(colorize_text('Default Running Config', 'Cyan'),
-                                           pretty_json(bot_detail.default_parameters)))
+                                           pretty_json(internal_detail.default_bots_parameters)))
         if full:
             print('{}:          {}'.format(colorize_text('Default Config', 'Cyan'),
-                                           pretty_json(bot_detail.custom_default_parameters)))
-        len_instances = len(bot_detail.instances)
+                                           pretty_json(internal_detail.custom_default_parameters)))
+        len_instances = len(internal_detail.instances)
         print('Running Instances        {}'.format(colorize_text('{}'.format(len_instances), 'Magenta')))
         if len_instances > 0 and full:
             print('Intances: -----------------'.format(len_instances))
             counter = 1
-            for instance in bot_detail.instances:
+            for instance in internal_detail.instances:
                 print('Instance {}: Name:              {}'.format(counter, instance.name))
                 print('Instance {}: Parameters:        {}'.format(counter, pretty_json(instance.parameters)))
                 counter = counter + 1
@@ -322,13 +418,22 @@ class AbstractBaseTool(ABC):
                 print()
 
     def print_bot_strange(self, bot_detail: IntelMQBot) -> None:
-        if bot_detail.strange:
+        internal_detail = bot_detail
+        if isinstance(bot_detail, StrangeBot):
+            internal_detail = internal_detail.bot
+
+        if internal_detail.strange:
             print(colorize_text('Errors:', 'Red'))
-        if not bot_detail.executable_exists and bot_detail.running_config_exists:
-            print('- Executable "{}" does not exist in {}'.format(bot_detail.code_module, self.config.bin_folder))
-        if not bot_detail.default_config_exists:
-            print('- BOT has no default configuration in {}'.format(self.config.base_bots_file))
-        if bot_detail.executable_exists and not bot_detail.running_config_exists:
+        if not internal_detail.executable_exists and (internal_detail.bots_config or internal_detail.has_running_config):
+            print('- Executable "{}" does not exist in {}'.format(internal_detail.module, self.config.bin_folder))
+        if not internal_detail.default_bots:
+            if bot_detail.custom:
+                path = bot_detail.file_path.replace(basename(bot_detail.file_path), '')
+                print('- BOT has no config.json in {}, or nothing was specified in the class'.format(path))
+            else:
+                path = self.config.base_bots_file
+                print('- BOT has no default configuration in {}'.format(path))
+        if internal_detail.executable_exists and not (internal_detail.bots_config or internal_detail.has_running_config):
             print('- BOT has an executable but is not installed')
 
     def print_bot_details(self, bot_details: List[IntelMQBot], full: bool = False) -> None:
@@ -341,7 +446,7 @@ class AbstractBaseTool(ABC):
         bot_details = self.get_all_bots()
         result = list()
         for bot_detail in bot_details:
-            if bot_detail.installed is installed and not bot_detail.strange:
+            if bot_detail.installed is installed:
                 result.append(bot_detail)
         return result
 
@@ -349,29 +454,20 @@ class AbstractBaseTool(ABC):
         self.logger.debug('Fetching strange bots')
         bot_details = self.get_all_bots()
         strange_bots = dict()
+        for bot_detail in bot_details:
+            if bot_detail.strange:
+                strange_bots[bot_detail.module] = {
+                        'bot': bot_detail,
+                        'issues': list()
+                    }
+
         if with_issues:
-            issues = self.get_different_configs(bot_details, 'BOTS')
+            issues = self.get_issues(strange_bots, 'BOTS')
             if issues:
                 # this command takes only into account installed bot
                 for issue in issues:
-                    if issue.bot.code_module not in strange_bots.keys():
-                        strange_bots[issue.bot.code_module] = {
-                            'bot': issue.bot,
-                            'issues': list()
-                        }
-                    if issue.bot.strange:
-                        strange_bots[issue.bot.code_module]['issues'].append(issue)
+                    strange_bots[issue.bot.module]['issues'].append(issue)
 
-        for bot in bot_details:
-            add = False
-            if bot.strange:
-                add = True
-            if add:
-                if bot.code_module not in strange_bots.keys():
-                    strange_bots[bot.code_module] = {
-                        'bot': bot,
-                        'issues': list()
-                    }
         return_values = list()
         for item in strange_bots.values():
             bot = item['bot']
@@ -388,41 +484,42 @@ class AbstractBaseTool(ABC):
     def get_installed_bots(self) -> List[IntelMQBot]:
         return self.__get_bots_by_install(True)
 
-    def get_different_configs(self, bot_details: List[IntelMQBot], type_: str) -> Optional[List[BotIssue]]:
+    def get_issues(self, bot_details: List[IntelMQBot], type_: str) -> Optional[List[BotIssue]]:
         self.logger.debug(
             'Getting differences in configuration of type {} for Tool {}'.format(type_, self.get_class_name())
         )
         differences = list()
 
         for bot_detail in bot_details:
+            if bot_detail.installed:
+                general_issues = GeneralIssueDetail()
 
-            # To do this the bot has to be installed
-            if bot_detail.default_config_exists and type_ == 'BOTS':
-                item = BotIssue()
-                item.bot = bot_detail
-                if bot_detail.default_parameters is None:
-                    # basically the BOT is not installed hence continue as this a different issue
-                    continue
-                general_issues = self.compare_dicts(
-                    bot_detail.default_parameters,
-                    bot_detail.custom_default_parameters,
-                    type_
-                )
-                if not general_issues.empty:
-                    item.issue = general_issues
-                    differences.append(item)
-            if bot_detail.default_config_exists and type_ == 'runtime':
-                for instance in bot_detail.instances:
-                    if bot_detail.default_parameters:
-                        parameters = bot_detail.default_parameters.get('parameters')
-                        if parameters:
-                            general_issues = self.compare_dicts(instance.parameters, parameters, 'parameters')
-                            if not general_issues.empty:
-                                item = BotIssue()
-                                item.bot = bot_detail
-                                item.issue = general_issues
-                                item.instance = instance
-                                differences.append(item)
+                # To do this the bot has to be installed
+                if bot_detail.default_bots and type_ == 'BOTS':
+                    if bot_detail.bots_config:
+                        # basically check only if the bot is installed
+                        if bot_detail.default_bots:
+                            self.compare_configs(
+                                general_issues,
+                                bot_detail.bots_config,
+                                bot_detail.default_bots,
+                            )
+
+                    # if the bot is present in file bot not in default BOTS not in BOTS there is an issue
+
+                    general_issues.referenced_bots = bot_detail.default_bots is not None
+                    general_issues.referenced_running_bots = bot_detail.bots_config is not None
+
+                    if not general_issues.empty:
+                        item = BotIssue()
+                        item.bot = bot_detail
+                        item.issues.append(general_issues)
+                        differences.append(item)
+
+                # for the runtime part it is considered that the BOTS is up to date
+                if bot_detail.bots_config and type_ == 'runtime':
+                    differences = differences + self.compare_runtime_parameters(bot_detail)
+
         if len(differences) > 0:
             for item in differences:
                 item.bot.has_issues = True
@@ -430,72 +527,95 @@ class AbstractBaseTool(ABC):
         else:
             return None
 
-    def compare_dicts(self, dict1: dict, dict2: dict, type_: str,
-                      previous_param_name: str = None) -> GeneralIssueDetail:
-        new_bot_issue = GeneralIssueDetail()
-        for key in dict1.keys():
-            if key not in dict2.keys():
+    def compare_meta(self,
+                     general_issues: GeneralIssueDetail,
+                     is_config: Union[IntelMQBotConfig, IntelMQBotInstance],
+                     should_config: IntelMQBotConfig,
+                     ) -> None:
+        self.logger.debug('Checking meta information')
+        # check name and description
+        if is_config.name != should_config.name:
+            param_issue = ParameterIssue()
+            param_issue.parameter_name = 'name'
+            param_issue.should_be = should_config.name
+            param_issue.has_value = is_config.name
+            general_issues.different_values.append(param_issue)
+        if is_config.description != should_config.description:
+            param_issue = ParameterIssue()
+            param_issue.parameter_name = 'description'
+            param_issue.should_be = should_config.description
+            param_issue.has_value = is_config.description
+            general_issues.different_values.append(param_issue)
+
+    def compare_configs(self,
+                        general_issues: GeneralIssueDetail,
+                        is_config: IntelMQBotConfig,
+                        should_config: IntelMQBotConfig,
+                        ) -> None:
+        if is_config is None:
+            is_config = IntelMQBotConfig()
+        self.compare_meta(general_issues, is_config, should_config)
+        self.compare_bots_parameters(general_issues, is_config.parameters, should_config.parameters)
+
+    def compare_bots_parameters(self, new_bot_issue: GeneralIssueDetail, is_parameters: dict, should_parameters: dict) -> None:
+        self.logger.debug('Checking parameter mismatches')
+        for key in should_parameters.keys():
+            if key not in is_parameters.keys():
                 new_bot_issue.additional_keys.append(key)
-        for key in dict2.keys():
-            if key not in dict1.keys():
+        for key in is_parameters.keys():
+            if key not in should_parameters.keys():
                 new_bot_issue.missing_keys.append(key)
+        for key, value in is_parameters.items():
+            if key not in new_bot_issue.additional_keys and key not in new_bot_issue.missing_keys:
+                if '{}'.format(value) != '{}'.format(should_parameters[key]):
+                    issue = ParameterIssue()
+                    issue.has_value = value
+                    issue.should_be = should_parameters[key]
+                    issue.parameter_name = key
+                    new_bot_issue.different_values.append(issue)
 
-        if type_ != 'parameters':
-            for key, value in dict1.items():
-                if previous_param_name:
-                    param_name = '{}.{}'.format(previous_param_name, key)
-                else:
-                    param_name = key
-                if param_name.startswith('.'):
-                    param_name = param_name[1:]
-                if isinstance(value, dict):
-                    if key not in new_bot_issue.missing_keys:
-                        value2 = dict2.get(key, {})
-                        sub_issue = self.compare_dicts(value, value2, type_, param_name)
-                        issue = ParameterIssueDetail()
-                        issue.parameter_name = param_name
-                        issue.additional_keys = sub_issue.additional_keys
-                        issue.missing_keys = sub_issue.missing_keys
-                        issue.different_values = sub_issue.different_values
-                        if not issue.empty:
-                            new_bot_issue.different_values.append(issue)
-                else:
-                    if key not in new_bot_issue.additional_keys:
-                        value2 = dict2[key]
-                        if value != value2:
-                            param_issue = ParameterIssue()
-                            param_issue.parameter_name = param_name
-                            param_issue.should_be = value
-                            param_issue.has_value = value2
-                            new_bot_issue.different_values.append(param_issue)
+    def compare_runtime_parameters(self,
+                                   bot_detail: IntelMQBot
+                                   ) -> List[BotIssue]:
+        output = list()
+        for instance in bot_detail.instances:
+            item = BotIssue()
+            item.bot = bot_detail
+            item.instance = instance
+            general_issues = GeneralIssueDetail()
+            self.compare_meta(general_issues, instance, bot_detail.bots_config)
 
-        if len(new_bot_issue.missing_keys) == 0:
-            new_bot_issue.missing_keys = None
-        if len(new_bot_issue.additional_keys) == 0:
-            new_bot_issue.additional_keys = None
-        if len(new_bot_issue.different_values) == 0:
-            new_bot_issue.different_values = None
-        return new_bot_issue
+            temp = bot_detail.bots_config.parameters.copy()
+            temp.update(bot_detail.default_parameters)
+            self.compare_bots_parameters(general_issues, instance.parameters, bot_detail.bots_config.parameters)
+            if not general_issues.empty:
+                item.issues.append(general_issues)
+                output.append(item)
+        return output
 
-    def update_bots_file(self, bots: List[IntelMQBot], mode_: str) -> None:
+    def update_bots_file(self, fixed_bots: List[IntelMQBot], mode_: str) -> None:
         # load running bots file
         json_str = '{}'
         with open(self.config.running_bots_file, 'r') as f:
             json_str = f.read()
         running_bots = json.loads(json_str)
-        for bot in bots:
+        for bot in fixed_bots:
 
             if mode_ == 'insert':
-                bot.default_parameters = bot.custom_default_parameters
-                running_bots[bot.bot_type][bot.class_name] = bot.get_bots_config(False)
+                running_bots[bot.bot_type][bot.bots_config.name] = bot.bots_config.to_dict(bot.module)
             elif mode_ == 'update':
-                # update only works for parameters
-                if bot.installed and not bot.strange:
-                    running_bots[bot.bot_type][bot.class_name] = bot.default_parameters
+                keys_to_delete = list()
+                for name, values in running_bots[bot.bot_type].items():
+                    if values.get('module') == bot.module:
+                        keys_to_delete.append(name)
 
+                for key_to_delete in keys_to_delete:
+                    del running_bots[bot.bot_type][key_to_delete]
+
+                running_bots[bot.bot_type][bot.bots_config.name] = bot.bots_config.to_dict(bot.module)
             elif mode_ == 'remove':
-                if running_bots[bot.bot_type].get(bot.class_name):
-                    del running_bots[bot.bot_type][bot.class_name]
+                if running_bots[bot.bot_type].get(bot.bots_config.name):
+                    del running_bots[bot.bot_type][bot.bots_config.name]
             else:
                 raise ToolException('Mode {} is not supported'.format(mode_))
 
@@ -504,7 +624,7 @@ class AbstractBaseTool(ABC):
             f.write(content)
 
     def manipulate_execution_file(self, bot: IntelMQBot, install: bool) -> None:
-        file_path = os.path.join(self.config.bin_folder, bot.code_module)
+        file_path = os.path.join(self.config.bin_folder, bot.module)
         if install:
             if os.path.exists(file_path):
                 raise ToolException(
@@ -513,16 +633,7 @@ class AbstractBaseTool(ABC):
                     )
                 )
             else:
-                text = "#!/bin/python3.6\n" \
-                       "import {0}\n" \
-                       "import sys\n" \
-                       "sys.exit(\n" \
-                       "    {0}.{1}.run()\n" \
-                       ")".format(bot.code_module, bot.bot_alias)
-                with open(file_path, 'w+') as f:
-                    f.write(text)
-                # Note: must be in octal (771_8 = 457_10)
-                os.chmod(file_path, 493)
+                create_executable(bot, file_path)
                 print('File {} created'.format(file_path))
         else:
             if os.path.exists(file_path):

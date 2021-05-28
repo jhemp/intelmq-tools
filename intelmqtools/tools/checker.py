@@ -51,7 +51,7 @@ class Checker(AbstractBaseTool):
                       full: bool, count: int = 0,
                       print_lines: bool = True,
                       include_params: bool = True) -> None:
-        bots = 'BOTS '
+        bots = 'Default BOTS'
         if count > 0:
             bots = 'Running Configuration'
         if print_lines:
@@ -68,23 +68,26 @@ class Checker(AbstractBaseTool):
                     bots, colorize_text('{}'.format(issues.missing_keys), 'Magenta')
                 )
             )
-        if issues.different_values and include_params:
+        if issues.different_values:
             param = 'Parameter(s)'
             if count > 0:
                 param = ' SubParameter(s)'
             print('    ' * count + '{}{} with issues:'.format(bots, param))
             for different_value in issues.different_values:
-                self.print_bot_issue(different_value, full, count + 1, include_params)
+                self.print_parameter_issue(different_value, full, count + 1, include_params)
+        if len(issues.bots_issues) > 0:
+            for item in issues.bots_issues:
+                print('    ' * count + colorize_text('{}'.format(item), 'BackgroundRed'))
         if print_lines:
             print('----------------------------------------')
         print()
 
-    def print_bot_issue(self,
-                        issue: Union[ParameterIssueDetail, ParameterIssue],
-                        full: bool,
-                        count: int,
-                        include_params: bool
-                        ) -> None:
+    def print_parameter_issue(self,
+                              issue: Union[ParameterIssueDetail, ParameterIssue],
+                              full: bool,
+                              count: int,
+                              include_params: bool
+                              ) -> None:
         base = '    ' * count + 'For Parameter: {}'.format(colorize_text(issue.parameter_name, 'Yellow'))
         if isinstance(issue, ParameterIssueDetail):
             print('{} are:'.format(base))
@@ -98,25 +101,31 @@ class Checker(AbstractBaseTool):
 
     def check_bots(self, full: bool) -> None:
         bot_details = self.get_installed_bots()
-        issues = self.get_different_configs(bot_details, 'BOTS')
+        issues = self.get_issues(bot_details, 'BOTS')
         if issues:
             for issue in issues:
                 print('BOT Class: {}'.format(colorize_text(issue.bot.class_name, 'LightYellow')))
                 self.__print_issue(issue.issue, full, full)
         else:
-            print('No issue found')
+            if len(bot_details) == 0:
+                print('Not Bots found')
+            else:
+                print('No issue found')
 
     def check_runtime(self, full: bool) -> None:
         bot_details = self.get_installed_bots()
-        issues = self.get_different_configs(bot_details, 'runtime')
+        issues = self.get_issues(bot_details, 'runtime')
         if issues:
             for issue in issues:
-                print('BOT Class:         {}'.format(colorize_text(issue.bot.class_name, 'LightYellow')))
-                print('BOT Instance Name: {}'.format(colorize_text(issue.instance.name, 'Yellow')))
-                self.__print_issue(issue.issue, full, 1, True,  full)
-                pass
+                print('BOT Class: {}'.format(colorize_text(issue.bot.class_name, 'LightYellow')))
+                print('BOT ID   : {}'.format(colorize_text(issue.instance.bot_id, 'Yellow')))
+                for sub_issue in issue.issues:
+                    self.__print_issue(sub_issue, full, 1, True,  full)
         else:
-            print('No issue found')
+            if len(bot_details) == 0:
+                print('Not Bots found')
+            else:
+                print('No issue found')
 
     def check_strange(self, full: bool) -> None:
         strange_bots = self.get_strange_bots(True)

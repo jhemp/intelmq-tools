@@ -3,7 +3,7 @@
 """
 Created on 17.01.20
 """
-from typing import Union
+from typing import Union, Optional, List
 
 from intelmqtools.classes.generalissuedetail import ParameterIssueDetail, GeneralIssueDetail
 from intelmqtools.classes.intelmqbot import IntelMQBot
@@ -18,6 +18,6 @@ __license__ = 'GPL v3+'
 
 class BotIssue:
     def __init__(self):
-        self.bot: IntelMQBot = None
-        self.issue: Union[ParameterIssueDetail, ParameterIssue, GeneralIssueDetail] = None
-        self.instance: IntelMQBotInstance = None
+        self.bot: Optional[IntelMQBot] = None
+        self.issues: List[GeneralIssueDetail] = list()
+        self.instance: Optional[IntelMQBotInstance] = None
