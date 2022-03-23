@@ -128,7 +128,7 @@ BOT Class:               OTRSCollectorBot
 BOT Name:                OTRS
 Description:             OTRS Collector fetches attachments from Restena's OTRS instance instance.
 Module:                  collectors.otrs.collector_otrs
-File:                    /home/jpweber/workspace/intelmq-workbench/bots/bots/collectors/otrs/collector_otrs.py
+File:                    /workspace/intelmq-workbench/bots/bots/collectors/otrs/collector_otrs.py
 Default Paramters        ['attachment_regex', 'extract_attachment', 'extract_download', 'http_password', 'http_username', 'limit', 'password', 'search_not_older_than', 'search_owner', 'search_queue', 'search_requestor', 'search_status', 'search_subject_like', 'set_status', 'ssl_client_certificate', 'take_ticket', 'uri', 'url_regex', 'user']
 Installed/Strange:       False/False
 Running Instances        66
